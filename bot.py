@@ -130,14 +130,12 @@ def apps_keyboard() -> InlineKeyboardMarkup:
 
 # ── /start ───────────────────────────────────────────────────────────────────
 
-@dp.message(CommandStart())
-async def cmd_start(msg: Message):
-    tg_id = msg.from_user.id
-    db.record_user(tg_id, msg.from_user.username)
+async def _do_start(tg_id: int, username: str | None, first_name: str | None, answer_fn) -> None:
+    """Общая логика старта — используется и в /start и в кнопке 'Начать'."""
+    db.record_user(tg_id, username)
 
-    # Выдаём триал если ещё не использован
     if not db.is_trial_used(tg_id):
-        await msg.answer(
+        await answer_fn(
             "🔐 <b>VPN — быстро, надёжно, без лишних вопросов</b>\n\n"
             "VLESS Reality — один из самых стойких протоколов к блокировкам.\n\n"
             "⏳ Активирую пробный период...",
@@ -145,11 +143,11 @@ async def cmd_start(msg: Message):
         )
         try:
             async with aiohttp.ClientSession() as session:
-                mz_name = _assign_mz_username(tg_id, msg.from_user.username, msg.from_user.first_name)
+                mz_name = _assign_mz_username(tg_id, username, first_name)
                 user_data = await marzban.create_trial_user(session, tg_id, days=10, data_limit_gb=5.0, mz_username=mz_name)
             db.mark_trial_used(tg_id)
             sub_url = user_data.get("subscription_url", "")
-            await msg.answer(
+            await answer_fn(
                 "🎁 <b>Тебе активирован бесплатный период на 10 дней (5 ГБ)</b>\n\n"
                 "🔗 Ссылка для подключения:\n"
                 f"<code>{sub_url}</code>\n\n"
@@ -162,14 +160,14 @@ async def cmd_start(msg: Message):
             )
         except Exception as e:
             logger.error(f"Trial creation failed for {tg_id}: {e}")
-            await msg.answer(
+            await answer_fn(
                 "🔐 <b>VPN — быстро, надёжно, без лишних вопросов</b>\n\n"
                 "Выбери тариф:",
                 parse_mode=ParseMode.HTML,
                 reply_markup=plans_keyboard(),
             )
     else:
-        await msg.answer(
+        await answer_fn(
             "🔐 <b>VPN — быстро, надёжно, без лишних вопросов</b>\n\n"
             "VLESS Reality — один из самых стойких протоколов к блокировкам.\n"
             "Работает на Android, iOS, Windows, macOS.\n\n"
@@ -177,6 +175,11 @@ async def cmd_start(msg: Message):
             parse_mode=ParseMode.HTML,
             reply_markup=plans_keyboard(),
         )
+
+
+@dp.message(CommandStart())
+async def cmd_start(msg: Message):
+    await _do_start(msg.from_user.id, msg.from_user.username, msg.from_user.first_name, msg.answer)
 
 
 # ── /profile ─────────────────────────────────────────────────────────────────
@@ -401,9 +404,21 @@ async def handle_unknown(msg: Message):
         return
     if not db.user_exists(msg.from_user.id):
         await msg.answer(
-            "👋 Привет! Напиши /start чтобы начать.",
-            parse_mode=ParseMode.HTML,
+            "👋 Привет! Нажми кнопку ниже — активирую бесплатный период на 10 дней.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🚀 Начать", callback_data="do_start")]
+            ]),
         )
+
+
+@dp.callback_query(F.data == "do_start")
+async def cb_do_start(call: CallbackQuery):
+    try:
+        await call.message.delete()
+    except Exception:
+        pass
+    await _do_start(call.from_user.id, call.from_user.username, call.from_user.first_name, call.message.answer)
+    await call.answer()
 
 
 # ── main ─────────────────────────────────────────────────────────────────────
