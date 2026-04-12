@@ -92,7 +92,7 @@ APPS_TEXT = {
         "📱 <b>iOS — Karing</b>\n\n"
         "1. Установи <a href='https://apps.apple.com/app/karing/id6472431552'>Karing</a> из App Store\n\n"
         "2. Открой бота → /profile → скопируй ссылку подписки\n\n"
-        "3. В Karing: нажми <b>+</b> → <b>Import from clipboard</b> (вставит автоматически)\n\n"
+        "3. В Karing: нажми <b>+</b> → <b>Импорт из буфера обмена</b>\n\n"
         "4. Нажми <b>Connect</b>\n\n"
         "✅ Готово! При первом запуске разреши добавление VPN-профиля."
     ),
