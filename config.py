@@ -19,4 +19,4 @@ INBOUNDS = {
     "vless": ["VLESS_TCP_REALITY", "VLESS_XHTTP_REALITY"]
 }
 
-SUPPORT_LINK = "https://t.me/chigar2010"
+SUPPORT_LINK = "https://t.me/radarshield_support_bot"

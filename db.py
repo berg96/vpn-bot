@@ -31,11 +31,12 @@ def init_db():
                 trial_activated INTEGER NOT NULL DEFAULT 0
             )
         """)
-        # Миграция: добавляем колонку если её нет (для существующих БД)
-        try:
-            c.execute("ALTER TABLE users ADD COLUMN mz_username TEXT")
-        except Exception:
-            pass
+        # Миграции для существующих БД
+        for col in ["mz_username TEXT", "sub_url TEXT"]:
+            try:
+                c.execute(f"ALTER TABLE users ADD COLUMN {col}")
+            except Exception:
+                pass
 
 
 def record_user(tg_id: int, username: str | None) -> bool:
@@ -61,6 +62,17 @@ def set_mz_username(tg_id: int, mz_username: str):
         c.execute(
             "UPDATE users SET mz_username=? WHERE tg_id=?", (mz_username, tg_id)
         )
+
+
+def get_sub_url(tg_id: int) -> str | None:
+    with _conn() as c:
+        row = c.execute("SELECT sub_url FROM users WHERE tg_id=?", (tg_id,)).fetchone()
+        return row[0] if row else None
+
+
+def set_sub_url(tg_id: int, sub_url: str):
+    with _conn() as c:
+        c.execute("UPDATE users SET sub_url=? WHERE tg_id=?", (sub_url, tg_id))
 
 
 def is_trial_used(tg_id: int) -> bool:

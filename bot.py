@@ -60,56 +60,65 @@ def plans_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
+def start_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📲 Установка", callback_data="apps_menu")],
+        [InlineKeyboardButton(text="👤 Профиль", callback_data="profile")],
+        [InlineKeyboardButton(text="💬 Поддержка", url=config.SUPPORT_LINK)],
+    ])
+
+
 def back_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="← Назад", callback_data="back_to_plans")]
     ])
 
 
+FLCLASH_ANDROID = "https://github.com/chen08209/FlClash/releases/download/v0.8.92/FlClash-0.8.92-android-arm64-v8a.apk"
+FLCLASH_WINDOWS = "https://github.com/chen08209/FlClash/releases/download/v0.8.92/FlClash-0.8.92-windows-amd64-setup.exe"
+FLCLASH_MACOS_ARM = "https://github.com/chen08209/FlClash/releases/download/v0.8.92/FlClash-0.8.92-macos-arm64.dmg"
+FLCLASH_MACOS_X64 = "https://github.com/chen08209/FlClash/releases/download/v0.8.92/FlClash-0.8.92-macos-amd64.dmg"
+
 APPS_TEXT = {
     "android": (
-        "📱 <b>Android — Hiddify</b>\n\n"
-        "1. Установи <a href='https://play.google.com/store/apps/details?id=app.hiddify.com'>Hiddify</a> из Google Play\n"
-        "   или <a href='https://github.com/hiddify/hiddify-app/releases'>скачай APK с GitHub</a>\n\n"
+        "📱 <b>Android — FLClash</b>\n\n"
+        "1. Скачай FLClash (кнопка ниже) и установи APK\n\n"
         "2. Открой бота → /profile → скопируй ссылку\n\n"
-        "3. В Hiddify: нажми <b>+</b> → <b>Добавить из буфера обмена</b>\n\n"
-        "4. Нажми кнопку подключения\n\n"
+        "3. В FLClash: нажми <b>+</b> → <b>Import from URL</b>\n\n"
+        "4. Вставь ссылку → нажми <b>Подключить</b>\n\n"
         "✅ Готово!"
     ),
     "ios": (
-        "📱 <b>iOS — Streisand</b>\n\n"
-        "1. Установи <a href='https://apps.apple.com/app/streisand/id6450534064'>Streisand</a> из App Store\n\n"
-        "2. Открой бота → /profile → скопируй ссылку\n\n"
-        "3. В Streisand: нажми <b>+</b> → <b>Импорт из буфера</b>\n\n"
-        "4. Нажми на конфигурацию → <b>Подключить</b>\n\n"
-        "✅ Готово! Разреши добавление VPN-профиля при первом запуске."
+        "📱 <b>iOS — Karing</b>\n\n"
+        "1. Установи <a href='https://apps.apple.com/app/karing/id6472431552'>Karing</a> из App Store\n\n"
+        "2. Открой бота → /profile → скопируй ссылку подписки\n\n"
+        "3. В Karing: нажми <b>+</b> → <b>Import from URL</b> → вставь ссылку\n\n"
+        "4. Нажми <b>Connect</b>\n\n"
+        "✅ Готово! При первом запуске разреши добавление VPN-профиля."
     ),
     "windows": (
-        "💻 <b>Windows — Hiddify</b>\n\n"
-        "1. Скачай <a href='https://github.com/hiddify/hiddify-app/releases'>Hiddify с GitHub</a> (файл Hiddify-Windows-Setup-x64.exe)\n\n"
-        "2. Установи и запусти\n\n"
-        "3. Открой бота → /profile → скопируй ссылку\n\n"
-        "4. В Hiddify: нажми <b>+</b> → <b>Добавить из буфера обмена</b>\n\n"
-        "5. Нажми кнопку подключения\n\n"
+        "💻 <b>Windows — FLClash</b>\n\n"
+        "1. Скачай FLClash (кнопка ниже) и установи\n\n"
+        "2. Открой бота → /profile → скопируй ссылку\n\n"
+        "3. В FLClash: нажми <b>+</b> → <b>Import from URL</b>\n\n"
+        "4. Вставь ссылку → нажми <b>Подключить</b>\n\n"
         "✅ Готово!"
     ),
     "macos": (
-        "💻 <b>macOS — Hiddify</b>\n\n"
-        "1. Скачай <a href='https://github.com/hiddify/hiddify-app/releases'>Hiddify с GitHub</a> (файл Hiddify-MacOS.dmg)\n\n"
-        "2. Установи и запусти\n\n"
-        "3. Открой бота → /profile → скопируй ссылку\n\n"
-        "4. В Hiddify: нажми <b>+</b> → <b>Добавить из буфера обмена</b>\n\n"
-        "5. Нажми кнопку подключения\n\n"
+        "💻 <b>macOS — FLClash</b>\n\n"
+        "1. Скачай FLClash (кнопка ниже — выбери свой Mac)\n\n"
+        "2. Открой бота → /profile → скопируй ссылку\n\n"
+        "3. В FLClash: нажми <b>+</b> → <b>Import from URL</b>\n\n"
+        "4. Вставь ссылку → нажми <b>Подключить</b>\n\n"
         "✅ Готово!"
     ),
     "routing": (
         "🔧 <b>Умная маршрутизация</b>\n\n"
-        "Российские сайты будут открываться напрямую — без VPN и без потери скорости.\n"
-        "Всё остальное по-прежнему идёт через VPN.\n\n"
-        "<b>Как подключить (Hiddify):</b>\n"
-        "Нажми кнопку ниже — Hiddify откроется и предложит добавить правила.\n\n"
-        "<b>Вручную:</b> Settings → Routing → + → Remote → вставь ссылку:\n"
-        "<code>http://82.38.171.220/hiddify-routing.yaml</code>"
+        "Российские сайты (VK, Яндекс, Госуслуги, Сбер и др.) открываются напрямую — "
+        "без VPN и без потери скорости.\n"
+        "Всё остальное идёт через VPN.\n\n"
+        "Маршрутизация встроена в профиль автоматически.\n"
+        "Просто добавь ссылку подписки в FLClash — всё настроится само."
     ),
 }
 
@@ -124,7 +133,7 @@ def apps_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="🍏 macOS", callback_data="apps:macos"),
         ],
         [InlineKeyboardButton(text="🔧 Умная маршрутизация", callback_data="apps:routing")],
-        [InlineKeyboardButton(text="← Главное меню", callback_data="back_to_plans")],
+        [InlineKeyboardButton(text="👤 Профиль", callback_data="profile")],
     ])
 
 
@@ -136,8 +145,7 @@ async def _do_start(tg_id: int, username: str | None, first_name: str | None, an
 
     if not db.is_trial_used(tg_id):
         await answer_fn(
-            "🔐 <b>VPN — быстро, надёжно, без лишних вопросов</b>\n\n"
-            "VLESS Reality — один из самых стойких протоколов к блокировкам.\n\n"
+            "🔐 <b>RadarShield VPN</b>\n\n"
             "⏳ Активирую пробный период...",
             parse_mode=ParseMode.HTML,
         )
@@ -147,16 +155,18 @@ async def _do_start(tg_id: int, username: str | None, first_name: str | None, an
                 user_data = await marzban.create_trial_user(session, tg_id, days=10, data_limit_gb=5.0, mz_username=mz_name)
             db.mark_trial_used(tg_id)
             sub_url = user_data.get("subscription_url", "")
+            if sub_url:
+                db.set_sub_url(tg_id, sub_url)
             await answer_fn(
                 "🎁 <b>Тебе активирован бесплатный период на 10 дней (5 ГБ)</b>\n\n"
                 "🔗 Ссылка для подключения:\n"
                 f"<code>{sub_url}</code>\n\n"
                 "📱 <b>Как подключиться:</b>\n"
-                "• <b>Android / Windows / macOS</b> → Hiddify\n"
-                "• <b>iOS</b> → Streisand\n\n"
-                "После триала выбери тариф для продолжения 👇",
+                "• <b>Android / Windows / macOS</b> → FLClash\n"
+                "• <b>iOS</b> → Karing\n\n"
+                "Нажми <b>Установка</b> — покажу как подключиться 👇",
                 parse_mode=ParseMode.HTML,
-                reply_markup=plans_keyboard(),
+                reply_markup=start_keyboard(),
             )
         except Exception as e:
             logger.error(f"Trial creation failed for {tg_id}: {e}")
@@ -164,16 +174,14 @@ async def _do_start(tg_id: int, username: str | None, first_name: str | None, an
                 "🔐 <b>VPN — быстро, надёжно, без лишних вопросов</b>\n\n"
                 "Выбери тариф:",
                 parse_mode=ParseMode.HTML,
-                reply_markup=plans_keyboard(),
+                reply_markup=start_keyboard(),
             )
     else:
         await answer_fn(
-            "🔐 <b>VPN — быстро, надёжно, без лишних вопросов</b>\n\n"
-            "VLESS Reality — один из самых стойких протоколов к блокировкам.\n"
-            "Работает на Android, iOS, Windows, macOS.\n\n"
-            "Выбери тариф:",
+            "🔐 <b>RadarShield VPN</b>\n\n"
+            "Работает на Android, iOS, Windows, macOS.\n\n",
             parse_mode=ParseMode.HTML,
-            reply_markup=plans_keyboard(),
+            reply_markup=start_keyboard(),
         )
 
 
@@ -190,13 +198,37 @@ async def cmd_profile(event: Message | CallbackQuery):
     msg = event.message if isinstance(event, CallbackQuery) else event
     tg_id = event.from_user.id
 
+    if not db.user_exists(tg_id):
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🚀 Начать", callback_data="do_start")]
+        ])
+        if isinstance(event, CallbackQuery):
+            await event.message.edit_text(
+                "👋 Ты ещё не зарегистрирован. Нажми кнопку — активирую бесплатный период.",
+                reply_markup=kb,
+            )
+            await event.answer()
+        else:
+            await msg.answer(
+                "👋 Ты ещё не зарегистрирован. Нажми кнопку — активирую бесплатный период.",
+                reply_markup=kb,
+            )
+        return
+
     mz_name = _resolve_mz_username(tg_id, event.from_user.username, event.from_user.first_name)
     async with aiohttp.ClientSession() as session:
         user = await marzban.get_user(session, tg_id, mz_name)
 
     if not user:
-        text = "У тебя пока нет активной подписки.\n\nВыбери тариф ниже 👇"
-        kb = plans_keyboard()
+        if not db.is_trial_used(tg_id):
+            # Триал не использован — предложить начать
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🚀 Начать", callback_data="do_start")]
+            ])
+            text = "👋 Нажми кнопку — активирую бесплатный период на 10 дней."
+        else:
+            text = "У тебя пока нет активной подписки.\n\nВыбери тариф ниже 👇"
+            kb = plans_keyboard()
     else:
         status = user.get("status", "unknown")
         expire_ts = user.get("expire")
@@ -208,15 +240,17 @@ async def cmd_profile(event: Message | CallbackQuery):
         else:
             expire_line = "📅 Срок: <b>бессрочно</b>"
 
-        sub_url = user.get("subscription_url", "")
+        sub_url = db.get_sub_url(tg_id) or user.get("subscription_url", "")
+        if sub_url and not db.get_sub_url(tg_id):
+            db.set_sub_url(tg_id, sub_url)
         status_emoji = {"active": "✅", "expired": "❌", "disabled": "🚫"}.get(status, "❓")
 
         text = (
             f"{status_emoji} Статус: <b>{status}</b>\n"
             f"{expire_line}\n\n"
             f"🔗 Ссылка для подключения:\n<code>{sub_url}</code>\n\n"
-            "Импортируй ссылку в приложение: v2rayNG (Android), "
-            "Streisand (iOS), v2rayN (Windows)."
+            "Импортируй ссылку в приложение: FLClash (Android/Windows/macOS), "
+            "Karing (iOS)."
         )
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔄 Продлить", callback_data="back_to_plans")],
@@ -225,7 +259,10 @@ async def cmd_profile(event: Message | CallbackQuery):
         ])
 
     if isinstance(event, CallbackQuery):
-        await event.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+        try:
+            await event.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+        except Exception:
+            pass
         await event.answer()
     else:
         await msg.answer(text, parse_mode=ParseMode.HTML, reply_markup=kb)
@@ -267,6 +304,24 @@ async def cb_back(call: CallbackQuery):
 @dp.message(Command("apps"))
 @dp.callback_query(F.data == "apps_menu")
 async def cmd_apps_menu(event: Message | CallbackQuery):
+    tg_id = event.from_user.id
+    if not db.user_exists(tg_id):
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🚀 Начать", callback_data="do_start")]
+        ])
+        if isinstance(event, CallbackQuery):
+            await event.message.edit_text(
+                "👋 Нажми кнопку — активирую бесплатный период на 10 дней.",
+                reply_markup=kb,
+            )
+            await event.answer()
+        else:
+            await event.answer(
+                "👋 Нажми кнопку — активирую бесплатный период на 10 дней.",
+                reply_markup=kb,
+            )
+        return
+
     text = (
         "📲 <b>Как подключить VPN</b>\n\n"
         "Выбери свою платформу — дам пошаговую инструкцию:"
@@ -289,11 +344,26 @@ async def cb_apps_platform(call: CallbackQuery):
 
     if platform == "routing":
         kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(
-                text="🔧 Добавить в Hiddify",
-                url="hiddify://install-config/http%3A%2F%2F82.38.171.220%2Fhiddify-routing.yaml",
-            )],
-            [InlineKeyboardButton(text="← Назад", callback_data="apps_menu")],
+            [InlineKeyboardButton(text="← Выбрать платформу", callback_data="apps_menu")],
+        ])
+    elif platform == "android":
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⬇️ Скачать FLClash (Android)", url=FLCLASH_ANDROID)],
+            [InlineKeyboardButton(text="← Выбрать платформу", callback_data="apps_menu")],
+            [InlineKeyboardButton(text="👤 Мой профиль", callback_data="profile")],
+        ])
+    elif platform == "windows":
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⬇️ Скачать FLClash (Windows)", url=FLCLASH_WINDOWS)],
+            [InlineKeyboardButton(text="← Выбрать платформу", callback_data="apps_menu")],
+            [InlineKeyboardButton(text="👤 Мой профиль", callback_data="profile")],
+        ])
+    elif platform == "macos":
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⬇️ FLClash — M1/M2/M3 (arm64)", url=FLCLASH_MACOS_ARM)],
+            [InlineKeyboardButton(text="⬇️ FLClash — Intel (amd64)", url=FLCLASH_MACOS_X64)],
+            [InlineKeyboardButton(text="← Выбрать платформу", callback_data="apps_menu")],
+            [InlineKeyboardButton(text="👤 Мой профиль", callback_data="profile")],
         ])
     else:
         kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -343,6 +413,8 @@ async def successful_payment(msg: Message):
             user_data = await marzban.create_or_extend_user(session, tg_id, days, mz_username=mz_name)
 
         sub_url = user_data.get("subscription_url", "")
+        if sub_url:
+            db.set_sub_url(tg_id, sub_url)
         expire_ts = user_data.get("expire")
         if expire_ts:
             expire_str = datetime.fromtimestamp(expire_ts, tz=timezone.utc).strftime("%d.%m.%Y")
@@ -354,8 +426,8 @@ async def successful_payment(msg: Message):
             f"🔗 Твоя ссылка для подключения:\n"
             f"<code>{sub_url}</code>\n\n"
             "📱 <b>Как подключиться:</b>\n"
-            "• <b>Android / Windows / macOS</b> → Hiddify: + → из буфера\n"
-            "• <b>iOS</b> → Streisand: + → из буфера\n\n"
+            "• <b>Android / Windows / macOS</b> → FLClash: + → Import from URL\n"
+            "• <b>iOS</b> → Karing: + → Import from URL\n\n"
             "Ссылка обновляется автоматически — сохрани её один раз в приложение.",
             parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
