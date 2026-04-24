@@ -41,6 +41,18 @@ def _assign_mz_username(tg_id: int, tg_username: str | None, first_name: str | N
 
 LANDING_BASE_URL = "https://radarshield.mooo.com"
 
+import sub_tokens  # noqa: E402
+
+
+def _stable_sub_url(tg_id: int) -> str:
+    """Стабильная HMAC-ссылка подписки — никогда не меняется для tg_id.
+
+    Прокси на лендинге расшифровывает токен → ищет mz_username по tg_id →
+    отдаёт актуальный sub из Marzban. Продление/смена лимита/ротация
+    конфигов — клиент не видит, ссылка та же.
+    """
+    return f"{LANDING_BASE_URL}/sub/{sub_tokens.make_sub_token(tg_id)}"
+
 
 def _install_url(mz_name: str) -> str:
     """URL для кнопки 'Открыть в приложении' в боте — тот же deep-link flow что на сайте."""
@@ -226,9 +238,10 @@ async def _do_start(tg_id: int, username: str | None, first_name: str | None, an
                 user_data = await marzban.create_trial_user(session, tg_id, days=7, data_limit_gb=5.0, mz_username=mz_name)
             db.mark_trial_used(tg_id)
             db.log_event(tg_id, "trial_activated", {"days": 7, "data_limit_gb": 5.0})
-            sub_url = user_data.get("subscription_url", "")
-            if sub_url:
-                db.set_sub_url(tg_id, sub_url)
+            mz_sub_url = user_data.get("subscription_url", "")
+            if mz_sub_url:
+                db.set_sub_url(tg_id, mz_sub_url)
+            sub_url = _stable_sub_url(tg_id)
             await answer_fn(
                 "🎁 <b>Тебе активирован бесплатный период на 7 дней (5 ГБ)</b>\n\n"
                 "🔗 Ссылка для подключения:\n"
@@ -365,9 +378,10 @@ async def _handle_landing_deeplink(msg: Message, token: str) -> None:
                 lp_user = await marzban.get_user(session, 0, mz_username=lead["mz_username"])
                 if lp_user and lp_user.get("subscription_url"):
                     db.set_landing_sub_url(token, lp_user["subscription_url"])
-            sub_url = updated.get("subscription_url") or db.get_sub_url(tg_id) or ""
-            if sub_url:
-                db.set_sub_url(tg_id, sub_url)
+            mz_sub_url = updated.get("subscription_url") or ""
+            if mz_sub_url:
+                db.set_sub_url(tg_id, mz_sub_url)
+            sub_url = _stable_sub_url(tg_id)
             db.log_event(tg_id, "lp_merge", {"token": token, "bonus_days": 1, "reactivation": True})
 
             expire_ts = updated.get("expire")
@@ -414,9 +428,10 @@ async def _handle_landing_deeplink(msg: Message, token: str) -> None:
         db.delete_reminder_events(tg_id)  # свежая подписка → reset напоминаний
         db.log_event(tg_id, "trial_activated", {"days": 7, "data_limit_gb": 5.0, "source": "landing"})
 
-        sub_url = user_data.get("subscription_url", "")
-        if sub_url:
-            db.set_sub_url(tg_id, sub_url)
+        mz_sub_url = user_data.get("subscription_url", "")
+        if mz_sub_url:
+            db.set_sub_url(tg_id, mz_sub_url)
+        sub_url = _stable_sub_url(tg_id)
 
         await msg.answer(
             "🎁 <b>Готово! 7 дней и 5 ГБ активированы</b>\n\n"
@@ -498,7 +513,10 @@ async def cb_lp_merge(call: CallbackQuery):
         await call.answer("Ошибка, напиши в поддержку", show_alert=True)
         return
 
-    sub_url = db.get_sub_url(tg_id) or updated.get("subscription_url", "")
+    mz_sub_url = updated.get("subscription_url") or db.get_sub_url(tg_id) or ""
+    if mz_sub_url:
+        db.set_sub_url(tg_id, mz_sub_url)
+    sub_url = _stable_sub_url(tg_id)
     expire_ts = updated.get("expire")
     expire_str = (
         datetime.fromtimestamp(expire_ts, tz=timezone.utc).strftime("%d.%m.%Y")
@@ -568,9 +586,10 @@ async def cmd_profile(event: Message | CallbackQuery):
         else:
             expire_line = "📅 Срок: <b>бессрочно</b>"
 
-        sub_url = db.get_sub_url(tg_id) or user.get("subscription_url", "")
-        if sub_url and not db.get_sub_url(tg_id):
-            db.set_sub_url(tg_id, sub_url)
+        mz_sub_url = user.get("subscription_url") or ""
+        if mz_sub_url and not db.get_sub_url(tg_id):
+            db.set_sub_url(tg_id, mz_sub_url)
+        sub_url = _stable_sub_url(tg_id)
         status_emoji = {"active": "✅", "expired": "❌", "disabled": "🚫"}.get(status, "❓")
 
         text = (
@@ -740,31 +759,24 @@ async def successful_payment(msg: Message):
     await msg.answer("⏳ Создаю подписку...")
 
     try:
-        is_renewal = bool(db.get_sub_url(tg_id))
-
         async with aiohttp.ClientSession() as session:
             mz_name = _assign_mz_username(tg_id, msg.from_user.username, msg.from_user.first_name)
             user_data = await marzban.create_or_extend_user(session, tg_id, days, mz_username=mz_name)
 
-        sub_url = user_data.get("subscription_url", "")
-        if sub_url:
-            db.set_sub_url(tg_id, sub_url)
+        mz_sub_url = user_data.get("subscription_url", "")
+        if mz_sub_url:
+            db.set_sub_url(tg_id, mz_sub_url)
+        sub_url = _stable_sub_url(tg_id)
         expire_ts = user_data.get("expire")
         if expire_ts:
             expire_str = datetime.fromtimestamp(expire_ts, tz=timezone.utc).strftime("%d.%m.%Y")
         else:
             expire_str = "—"
 
-        renewal_note = (
-            "\n⚠️ <b>Ссылка обновилась</b> — удали старый профиль в приложении и добавь новую ссылку.\n"
-            if is_renewal else ""
-        )
-
         await msg.answer(
             f"✅ <b>Готово! Подписка активирована до {expire_str}</b>\n\n"
             f"🔗 Твоя ссылка для подключения:\n"
-            f"<code>{sub_url}</code>\n"
-            f"{renewal_note}\n"
+            f"<code>{sub_url}</code>\n\n"
             "Нажми <b>📲 Открыть в приложении</b> — клиент откроется с готовым импортом.",
             parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[

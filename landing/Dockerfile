@@ -10,7 +10,7 @@ RUN pip install --no-cache-dir \
     python-multipart==0.0.12 \
     aiogram==3.14.0
 
-COPY db.py marzban.py tinkoff.py config.py ./
+COPY db.py marzban.py tinkoff.py config.py sub_tokens.py ./
 COPY landing/ ./landing/
 
 EXPOSE 8081

@@ -14,6 +14,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 import db
 import marzban
 import tinkoff
+import sub_tokens
 
 # Отдельный TG-client для уведомлений юзера после успешной RUB-оплаты.
 # Т-Банк webhook прилетает на лендинг, а не на бота — нужен свой Bot instance.
@@ -212,39 +213,47 @@ async def create_trial(
     return resp
 
 
-@app.get("/sub/{token}")
-async def proxy_sub(token: str, request: Request):
-    """Стабильный прокси подписки.
+def _is_unlimited(user: dict) -> bool:
+    """Безлимит-бессрочно (data_limit=0/None И expire=0/None)."""
+    return not (user.get("data_limit") or 0) and not (user.get("expire") or 0)
 
-    Декодирует mz_username из старого Marzban-токена (base64(username,timestamp,...)),
-    идёт в Marzban API за актуальным sub-контентом и возвращает его клиенту.
-    Ссылка у пользователя не меняется никогда — даже после продлений/обновлений.
+
+def _is_active(user: dict) -> bool:
+    """Подписка активна: status=active И не истёк expire."""
+    if (user.get("status") or "").lower() != "active":
+        return False
+    expire = user.get("expire") or 0
+    if expire == 0:
+        return True  # бессрочно
+    return expire > int(datetime.now(timezone.utc).timestamp())
+
+
+def _expired_sub_response():
+    """Поддельный sub с одним фейк-сервером, имя = призыв продлить.
+
+    В Karing/FLClash отображается как сервер с именем — пользователь
+    видит ссылку на оплату прямо в списке серверов клиента.
     """
-    import base64
+    import base64 as _b64
+    from urllib.parse import quote
     from fastapi.responses import Response as _Resp
 
-    # Извлекаем mz_username из токена (формат Marzban: base64(username,timestamp,...))
-    try:
-        padding = (4 - len(token) % 4) % 4
-        decoded = base64.b64decode(token + "=" * padding).decode("utf-8", errors="replace")
-        mz_username = decoded.split(",")[0].strip()
-        if not mz_username or "/" in mz_username:
-            raise ValueError("bad username")
-    except Exception:
-        raise HTTPException(status_code=404, detail="Not found")
+    remark = "🔴 Подписка кончилась — radarshield.mooo.com/pay"
+    dummy = (
+        f"vless://00000000-0000-0000-0000-000000000000@127.0.0.1:443"
+        f"?type=tcp&security=none#{quote(remark)}"
+    )
+    body = _b64.b64encode(dummy.encode()).decode().encode()
+    return _Resp(
+        content=body,
+        media_type="text/plain; charset=utf-8",
+        headers={"content-disposition": 'attachment; filename="RadarShield VPN"'},
+    )
 
-    # Получаем актуальный subscription_url из Marzban API
-    try:
-        async with aiohttp.ClientSession() as s:
-            user = await marzban.get_user(s, 0, mz_username=mz_username)
-    except Exception as e:
-        logger.error(f"proxy_sub marzban error for {mz_username}: {e}")
-        raise HTTPException(status_code=502, detail="Upstream error")
 
-    if not user or not user.get("subscription_url"):
-        raise HTTPException(status_code=404, detail="Not found")
-
-    sub_url = user["subscription_url"]
+async def _proxy_marzban_sub(sub_url: str, request: Request):
+    """Скачивает sub-контент из Marzban (внутренний URL) и возвращает клиенту."""
+    from fastapi.responses import Response as _Resp
 
     # Заменяем публичный домен на внутренний Marzban — иначе nginx зациклится
     # (nginx /sub/ → наш app → fetch public URL → nginx /sub/ → loop)
@@ -256,7 +265,6 @@ async def proxy_sub(token: str, request: Request):
                 sub_url = f"{_mz_base}/{_path[1]}"
             break
 
-    # Проксируем контент подписки напрямую с внутреннего Marzban
     ua = request.headers.get("user-agent", "")
     try:
         async with aiohttp.ClientSession() as s:
@@ -264,7 +272,7 @@ async def proxy_sub(token: str, request: Request):
             content = await resp.read()
             content_type = resp.headers.get("Content-Type", "text/plain; charset=utf-8")
     except Exception as e:
-        logger.error(f"proxy_sub fetch failed for {mz_username}: {e}")
+        logger.error(f"proxy_sub fetch failed: {e}")
         raise HTTPException(status_code=502, detail="Upstream error")
 
     return _Resp(
@@ -272,6 +280,78 @@ async def proxy_sub(token: str, request: Request):
         media_type=content_type,
         headers={"content-disposition": 'attachment; filename="RadarShield VPN"'},
     )
+
+
+@app.get("/sub/{token}")
+async def proxy_sub(token: str, request: Request):
+    """Стабильный прокси подписки.
+
+    Два пути:
+    1. HMAC-токен (новый формат) — стабильная ссылка по tg_id, никогда не
+       меняется. Подделка невозможна без SUB_TOKEN_SECRET. Если подписка
+       истекла — возвращаем фейк-sub с призывом продлить.
+    2. Marzban-base64 токен (legacy) — пускаем только бессрочных безлимитчиков
+       (data_limit=0 AND expire=0): они уже вставили старые ссылки в клиенты,
+       не хотим их тревожить просьбой переподключиться.
+    """
+    # --- Path 1: HMAC token ---
+    tg_id = sub_tokens.parse_sub_token(token)
+    if tg_id is not None:
+        with db._conn() as c:
+            row = c.execute(
+                "SELECT mz_username FROM users WHERE tg_id=?", (tg_id,)
+            ).fetchone()
+        if not row or not row[0]:
+            raise HTTPException(status_code=404, detail="Not found")
+        mz_username = row[0]
+
+        try:
+            async with aiohttp.ClientSession() as s:
+                user = await marzban.get_user(s, 0, mz_username=mz_username)
+        except Exception as e:
+            logger.error(f"proxy_sub marzban error for {mz_username}: {e}")
+            raise HTTPException(status_code=502, detail="Upstream error")
+        if not user or not user.get("subscription_url"):
+            raise HTTPException(status_code=404, detail="Not found")
+
+        if not _is_active(user):
+            return _expired_sub_response()
+        return await _proxy_marzban_sub(user["subscription_url"], request)
+
+    # --- Path 2: legacy Marzban-base64 ---
+    # Декодируем имя из марзбановского токена. Пускаем только если:
+    #   (a) это landing-trial mz_user (имя `lp_XXX`, случайное и непредсказуемое), или
+    #   (b) это tg-юзер на безлимите (data_limit=0 AND expire=0) — гранд-юзеры,
+    #       которых не хотим тревожить просьбой переподключиться.
+    # Для регулярных tg-юзеров с предсказуемым username (= tg_username) этот путь
+    # закрыт — иначе подделка по имени тривиальна.
+    import base64
+    try:
+        padding = (4 - len(token) % 4) % 4
+        decoded = base64.b64decode(token + "=" * padding).decode("utf-8", errors="replace")
+        mz_username = decoded.split(",")[0].strip()
+        if not mz_username or "/" in mz_username:
+            raise ValueError("bad username")
+    except Exception:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    try:
+        async with aiohttp.ClientSession() as s:
+            user = await marzban.get_user(s, 0, mz_username=mz_username)
+    except Exception as e:
+        logger.error(f"proxy_sub legacy marzban error for {mz_username}: {e}")
+        raise HTTPException(status_code=502, detail="Upstream error")
+
+    if not user or not user.get("subscription_url"):
+        raise HTTPException(status_code=404, detail="Not found")
+
+    is_landing_lead = mz_username.startswith("lp_")
+    if not is_landing_lead and not _is_unlimited(user):
+        raise HTTPException(status_code=404, detail="Not found")
+
+    if not _is_active(user):
+        return _expired_sub_response()
+    return await _proxy_marzban_sub(user["subscription_url"], request)
 
 
 @app.get("/s/{token}", response_class=HTMLResponse)
@@ -334,26 +414,34 @@ async def install(request: Request, token: str):
 
 @app.get("/open/{mz_username}", response_class=HTMLResponse)
 async def open_app(request: Request, mz_username: str):
-    """Deep-link redirector для основной подписки бота (не landing).
+    """Deep-link redirector для основной подписки.
 
-    Marzban на каждый GET возвращает sub_url с новым timestamp в токене.
-    Чтобы юзер на refresh'ах не видел «прыгающую» ссылку, берём первое
-    полученное значение и кэшируем в users.sub_url.
+    Для tg-юзеров (есть в users.mz_username) выдаём стабильную HMAC-ссылку
+    `/sub/{token}` — она никогда не меняется. Для landing-leads (имя `lp_XXX`,
+    нет tg_id) выдаём marzban-URL и кэшируем в БД, чтобы UI не «прыгал»
+    при refresh'ах.
     """
-    sub_url = db.get_sub_url_by_mz(mz_username)
+    with db._conn() as c:
+        row = c.execute(
+            "SELECT tg_id FROM users WHERE mz_username=?", (mz_username,)
+        ).fetchone()
+    tg_id = row[0] if row else None
 
-    if not sub_url:
-        try:
-            async with aiohttp.ClientSession() as s:
-                user = await marzban.get_user(s, 0, mz_username=mz_username)
-        except Exception as e:
-            logger.error(f"open_app marzban fetch failed for {mz_username}: {e}")
-            user = None
-
-        if not user or not user.get("subscription_url"):
-            raise HTTPException(status_code=404, detail="Подписка не найдена. Возможно, она была удалена.")
-        sub_url = user["subscription_url"]
-        db.set_sub_url_by_mz(mz_username, sub_url)
+    if tg_id:
+        sub_url = f"https://radarshield.mooo.com/sub/{sub_tokens.make_sub_token(tg_id)}"
+    else:
+        sub_url = db.get_sub_url_by_mz(mz_username)
+        if not sub_url:
+            try:
+                async with aiohttp.ClientSession() as s:
+                    user = await marzban.get_user(s, 0, mz_username=mz_username)
+            except Exception as e:
+                logger.error(f"open_app marzban fetch failed for {mz_username}: {e}")
+                user = None
+            if not user or not user.get("subscription_url"):
+                raise HTTPException(status_code=404, detail="Подписка не найдена. Возможно, она была удалена.")
+            sub_url = user["subscription_url"]
+            db.set_sub_url_by_mz(mz_username, sub_url)
 
     return templates.TemplateResponse("install.html", {
         "request": request,
@@ -532,9 +620,10 @@ async def tinkoff_notification(request: Request):
                     mz_username = marzban.build_mz_username(tg_id)
                     db.set_mz_username(tg_id, mz_username)
                 user_data = await marzban.create_or_extend_user(s, tg_id, days, mz_username=mz_username)
-            sub_url = user_data.get("subscription_url", "")
-            if sub_url:
-                db.set_sub_url(tg_id, sub_url)
+            mz_sub_url = user_data.get("subscription_url", "")
+            if mz_sub_url:
+                db.set_sub_url(tg_id, mz_sub_url)
+            sub_url = f"https://radarshield.mooo.com/sub/{sub_tokens.make_sub_token(tg_id)}"
             expire_ts = user_data.get("expire")
             expire_str = (
                 datetime.fromtimestamp(expire_ts, tz=timezone.utc).strftime("%d.%m.%Y")
