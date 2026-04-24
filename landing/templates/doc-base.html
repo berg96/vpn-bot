@@ -1,0 +1,20 @@
+{% extends "_base.html" %}
+{% block title %}{{ title }} — RadarShield{% endblock %}
+{% block meta %}<meta name="description" content="{{ title }} — юридический документ RadarShield">{% endblock %}
+
+{% block body %}
+<main class="doc">
+  <h1>{{ heading }}</h1>
+  <p class="doc-meta">Редакция от {{ updated_at }}. Администратор: {{ ip_full_name }}, ИНН {{ ip_inn }}.</p>
+
+  {% block content %}{% endblock %}
+
+  <div class="req">
+    <b>Реквизиты:</b><br>
+    {{ ip_full_name }}<br>
+    ИНН: {{ ip_inn }} · ОГРНИП: {{ ip_ogrnip }}<br>
+    Адрес: {{ ip_address }}<br>
+    Email: <a href="mailto:{{ support_email }}">{{ support_email }}</a>{% if support_phone %} · Тел.: {{ support_phone }}{% endif %}
+  </div>
+</main>
+{% endblock %}

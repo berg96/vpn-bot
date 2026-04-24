@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="robots" content="noindex, nofollow">
+<title>Подключение RadarShield</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/landing.css">
+</head>
+<body>
+
+<div id="mobile-flow" style="display:none">
+  <main class="install-flow">
+    <h1>📲 Открываем приложение…</h1>
+    <p class="sub" id="status">Подожди секунду…</p>
+    <p class="tiny" style="margin-top:32px">
+      Ничего не произошло?
+      {% if back_url %}
+        <a href="{{ back_url }}" style="color:var(--accent)">Вернуться к ссылке подписки</a>
+      {% else %}
+        <a href="https://t.me/{{ bot_username }}" target="_blank" rel="noopener" style="color:var(--accent)">Вернуться в бота</a>
+      {% endif %}
+    </p>
+  </main>
+</div>
+
+<div id="desktop-flow" style="display:none">
+  <section class="hero compact">
+    <div class="hero-bg"></div>
+    <div class="container" style="text-align:center;position:relative;z-index:2">
+      <h1>💻 Настройка на компьютере</h1>
+      <p class="sub">Скачай клиент и вставь ссылку подписки — 2 минуты.</p>
+    </div>
+  </section>
+
+  <div class="container">
+    <section style="padding:40px 0">
+      <div class="section-head"><div><div class="section-tag">Шаг 1</div><h2>Скачай клиент</h2></div></div>
+      <div class="platforms" style="grid-template-columns:repeat(2,1fr);max-width:640px;margin:0 auto">
+        <a class="plat-card" data-os="windows" href="{{ downloads.flclash_windows }}" target="_blank" rel="noopener nofollow">
+          <div class="plat-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.3l7.4-1V11H3V5.3zM3 18.7l7.4 1V13H3v5.7zM11.4 19.8L21 21V13h-9.6v6.8zM11.4 4.2V11H21V3l-9.6 1.2z"/></svg></div>
+          <div><div class="plat-title">Windows</div><div class="plat-meta">FLClash · .exe</div></div>
+          <span class="plat-link">Скачать</span>
+        </a>
+        <div class="plat-card" data-os="macos">
+          <div class="plat-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.5 12.5c0-2.8 2.3-4.1 2.4-4.2-1.3-1.9-3.3-2.2-4-2.2-1.7-.2-3.3 1-4.2 1-.9 0-2.2-1-3.6-1-1.8 0-3.6 1.1-4.5 2.7-2 3.4-.5 8.4 1.4 11.2.9 1.4 2 2.9 3.4 2.8 1.4 0 1.9-.9 3.5-.9 1.6 0 2.1.9 3.5.9 1.5 0 2.4-1.4 3.3-2.7 1-1.6 1.5-3.1 1.5-3.2 0 0-2.8-1.1-2.7-4.4zM14.8 4.3c.8-.9 1.3-2.2 1.2-3.5-1.1 0-2.5.7-3.3 1.6-.7.8-1.4 2.1-1.2 3.4 1.2.1 2.5-.6 3.3-1.5z"/></svg></div>
+          <div>
+            <div class="plat-title">macOS</div>
+            <div class="plat-meta">FLClash — выбери архитектуру:</div>
+            <div style="display:flex;gap:10px;margin-top:10px">
+              <a href="{{ downloads.flclash_macos_arm }}" target="_blank" rel="noopener nofollow" style="color:var(--accent);font-size:13px">M-серия</a>
+              <a href="{{ downloads.flclash_macos_x64 }}" target="_blank" rel="noopener nofollow" style="color:var(--accent);font-size:13px">Intel</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section style="padding:20px 0">
+      <div class="section-head"><div><div class="section-tag">Шаг 2</div><h2>Скопируй ссылку</h2></div></div>
+      <div class="sub-block">
+        <div class="sub-url-box">
+          <code>{{ sub_url }}</code>
+          <button class="btn-secondary" id="copy-btn-desktop" type="button">Копировать</button>
+        </div>
+      </div>
+    </section>
+
+    <section style="padding:20px 0 80px">
+      <div class="section-head"><div><div class="section-tag">Шаг 3</div><h2>Импортируй в FLClash</h2></div></div>
+      <div style="max-width:640px;margin:0 auto;color:var(--ink-dim);font-size:15.5px">
+        <ol style="padding-left:20px;line-height:1.9">
+          <li>Открой FLClash</li>
+          <li>Нажми <b>+</b> → <b>Import from URL</b></li>
+          <li>Вставь ссылку → нажми <b>Подключить</b></li>
+        </ol>
+      </div>
+    </section>
+  </div>
+
+  <footer class="footer-mini">
+    <div class="btn-row">
+      <a class="btn btn-ghost" href="https://t.me/{{ bot_username }}" target="_blank" rel="noopener">🤖 В бота</a>
+      <a class="btn btn-ghost" href="https://t.me/{{ support_username }}" target="_blank" rel="noopener">💬 Поддержка</a>
+    </div>
+  </footer>
+</div>
+
+<script src="/static/app.js"></script>
+<script>
+(function() {
+  var subUrl = {{ sub_url|tojson }};
+  var backUrl = {{ (back_url or ('https://t.me/' ~ bot_username))|tojson }};
+  var enc = encodeURIComponent(subUrl);
+  var ua = navigator.userAgent;
+  var isAndroid = /Android/i.test(ua);
+  var isIOS = /iPhone|iPad|iPod/i.test(ua);
+
+  var mobile = document.getElementById('mobile-flow');
+  var desktop = document.getElementById('desktop-flow');
+
+  var copyBtn = document.getElementById('copy-btn-desktop');
+  if (copyBtn) {
+    copyBtn.addEventListener('click', function() {
+      var done = function() { copyBtn.textContent = 'Скопировано ✓'; };
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(subUrl).then(done);
+      } else {
+        var ta = document.createElement('textarea'); ta.value = subUrl;
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); done(); } catch(e) {}
+        document.body.removeChild(ta);
+      }
+    });
+  }
+
+  if (!isAndroid && !isIOS) {
+    desktop.style.display = 'block';
+    return;
+  }
+
+  mobile.style.display = 'block';
+
+  var scheme = isIOS
+    ? 'karing://install-config?url=' + enc + '&name=RadarShield'
+    : 'clash://install-config?url=' + enc + '&name=RadarShield';
+  var storeFallback = isIOS
+    ? {{ downloads.karing_ios|tojson }}
+    : {{ downloads.flclash_android|tojson }};
+
+  document.addEventListener('visibilitychange', function() {
+    if (document.hidden) {
+      setTimeout(function() { try { window.close(); } catch(e) {} }, 400);
+    }
+  });
+
+  window.location.href = scheme;
+
+  setTimeout(function() {
+    if (!document.hidden && document.visibilityState !== 'hidden') {
+      document.getElementById('status').textContent = 'Приложение не установлено — открываем магазин…';
+      setTimeout(function() { window.location.href = storeFallback; }, 600);
+    }
+  }, 2500);
+})();
+</script>
+</body>
+</html>

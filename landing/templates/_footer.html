@@ -1,0 +1,53 @@
+<footer class="page-footer rich">
+  <div class="footer-inner">
+    <div class="footer-col">
+      <div class="footer-title">Принимаем к оплате</div>
+      <div class="pay-logos" aria-label="Принимаем к оплате">
+        <svg class="pay-logo" aria-label="Visa"><use href="/static/pay-logos.svg#logo-visa"/></svg>
+        <svg class="pay-logo" aria-label="Mastercard"><use href="/static/pay-logos.svg#logo-mc"/></svg>
+        <svg class="pay-logo" aria-label="МИР"><use href="/static/pay-logos.svg#logo-mir"/></svg>
+        <svg class="pay-logo" aria-label="СБП"><use href="/static/pay-logos.svg#logo-sbp"/></svg>
+        <svg class="pay-logo" aria-label="T-Pay"><use href="/static/pay-logos.svg#logo-tpay"/></svg>
+        <a href="https://tbank.ru" target="_blank" rel="noopener" aria-label="Т-Банк">
+          <svg class="pay-logo"><use href="/static/pay-logos.svg#logo-tbank"/></svg>
+        </a>
+      </div>
+      <div class="footer-tiny">Приём платежей обеспечивает АО «Тинькофф Банк», лицензия ЦБ РФ № 2673.
+      Ввод карты — на защищённой странице банка (PCI DSS Level 1).</div>
+    </div>
+
+    <div class="footer-col">
+      <div class="footer-title">Документы</div>
+      <ul class="footer-links">
+        <li><a href="/offer">Публичная оферта</a></li>
+        <li><a href="/privacy">Политика конфиденциальности</a></li>
+        <li><a href="/refund">Условия возврата</a></li>
+        <li><a href="/security">Безопасность данных</a></li>
+      </ul>
+    </div>
+
+    <div class="footer-col">
+      <div class="footer-title">Контакты</div>
+      <ul class="footer-links">
+        <li>📧 <a href="mailto:{{ support_email }}">{{ support_email }}</a></li>
+        {% if support_phone %}<li>📞 {{ support_phone }}</li>{% endif %}
+        <li>💬 <a href="https://t.me/{{ support_username }}" target="_blank" rel="noopener">@{{ support_username }}</a></li>
+        <li>🤖 <a href="https://t.me/{{ bot_username }}" target="_blank" rel="noopener">@{{ bot_username }}</a></li>
+      </ul>
+    </div>
+
+    <div class="footer-col">
+      <div class="footer-title">Реквизиты</div>
+      <div class="footer-tiny">
+        {{ ip_full_name }}<br>
+        ИНН: {{ ip_inn }}<br>
+        {% if ip_ogrnip and ip_ogrnip != 'ОГРНИП_УТОЧНИТЬ' %}ОГРНИП: {{ ip_ogrnip }}<br>{% endif %}
+        {{ ip_address }}
+      </div>
+    </div>
+  </div>
+
+  <div class="footer-bottom">
+    <div class="copy">© RadarShield · {{ updated_at }}</div>
+  </div>
+</footer>

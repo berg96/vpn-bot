@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+  <symbol id="logo-visa" viewBox="0 0 60 20">
+    <text x="30" y="15" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" font-weight="800" font-style="italic" fill="#1a1f71">VISA</text>
+  </symbol>
+  <symbol id="logo-mc" viewBox="0 0 60 20">
+    <circle cx="23" cy="10" r="8" fill="#eb001b"/>
+    <circle cx="37" cy="10" r="8" fill="#f79e1b" fill-opacity="0.85"/>
+  </symbol>
+  <symbol id="logo-mir" viewBox="0 0 60 20">
+    <rect x="2" y="4" width="56" height="12" rx="2" fill="#1b7340"/>
+    <text x="30" y="13" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" font-weight="700" fill="#fff">МИР</text>
+  </symbol>
+  <symbol id="logo-sbp" viewBox="0 0 60 20">
+    <rect x="2" y="4" width="56" height="12" rx="2" fill="#5b2ec5"/>
+    <text x="30" y="13" text-anchor="middle" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#fff">СБП</text>
+  </symbol>
+  <symbol id="logo-tbank" viewBox="0 0 60 20">
+    <rect x="2" y="4" width="56" height="12" rx="2" fill="#ffdd2d"/>
+    <text x="30" y="13" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" font-weight="800" fill="#000">Т-Банк</text>
+  </symbol>
+  <symbol id="logo-tpay" viewBox="0 0 60 20">
+    <rect x="2" y="4" width="56" height="12" rx="2" fill="#1e1e1e"/>
+    <text x="30" y="13" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" font-weight="800" fill="#ffdd2d">T-Pay</text>
+  </symbol>
+</svg>

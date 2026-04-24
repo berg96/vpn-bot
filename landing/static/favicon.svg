@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffb703"/>
+      <stop offset="100%" stop-color="#fb8500"/>
+    </linearGradient>
+  </defs>
+  <path d="M16 2 L28 6 L28 15 Q28 25 16 30 Q4 25 4 15 L4 6 Z" fill="url(#g)"/>
+  <text x="16" y="22" text-anchor="middle" font-family="-apple-system,Segoe UI,sans-serif" font-size="16" font-weight="800" fill="#0d1b2a">R</text>
+</svg>

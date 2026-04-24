@@ -1,0 +1,16 @@
+{% extends "_base.html" %}
+{% block title %}{{ title|default('Страница не найдена') }} — RadarShield{% endblock %}
+{% block meta %}<meta name="description" content="404">{% endblock %}
+
+{% block body %}
+<section class="hero compact">
+  <div class="hero-bg"></div>
+  <div class="container" style="text-align:center;position:relative;z-index:2">
+    <h1>{{ heading|default('🔎 Страница не найдена') }}</h1>
+    <p class="sub" style="max-width:560px;margin:24px auto">{{ message|default('Ссылка устарела или такой страницы никогда не было.') }}</p>
+    <div style="margin-top:32px">
+      <a class="btn btn-primary btn-lg" href="/">На главную</a>
+    </div>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,84 @@
+{% extends "_base.html" %}
+{% block title %}Подписка активирована — RadarShield{% endblock %}
+{% block meta %}<meta name="description" content="Страница пробного периода">{% endblock %}
+
+{% block body %}
+<section class="hero compact">
+  <div class="hero-bg"></div>
+  <div class="container" style="text-align:center;position:relative;z-index:2">
+    {% if claimed %}
+      <h1>✅ Пробный период использован</h1>
+      <p class="sub">Актуальная ссылка на твою подписку — в <a href="https://t.me/{{ bot_username }}" target="_blank" rel="noopener" style="color:var(--accent)">боте</a> (команда /profile). Используй её.</p>
+    {% elif active %}
+      <h1>🎉 Подписка активирована</h1>
+      <p class="sub">Вставь ссылку в клиент (FLClash / Karing).<br>
+      Действует до <b id="expires-local" data-iso="{{ expires_at.isoformat() }}">{{ expires_at.strftime('%d.%m.%Y %H:%M') }}</b><br>
+      <span class="countdown-wrap">осталось: <b id="countdown">—</b></span></p>
+    {% else %}
+      <h1>⏰ Пробный период истёк</h1>
+      <p class="sub">Получи 7 дней и 5 ГБ бесплатно через Telegram — кнопка ниже.</p>
+    {% endif %}
+  </div>
+</section>
+
+{% if sub_url and active and not claimed %}
+<div class="container">
+  <div class="install-shortcut">
+    <button type="button" class="btn btn-primary btn-lg install-cta mobile-only" onclick="window.open('/i/{{ token }}','_blank')">
+      📲 Открыть в приложении
+    </button>
+  </div>
+
+  <div class="sub-block">
+    <label>Ссылка подписки</label>
+    <div class="sub-url-box">
+      <code id="sub-url">{{ sub_url }}</code>
+      <button class="btn-secondary" id="copy-btn" type="button">Копировать</button>
+    </div>
+    <div id="qr" class="qr qr-desktop-only"></div>
+    <p class="tiny qr-desktop-only">Отсканируй QR камерой телефона — откроется приложение с готовым импортом.</p>
+  </div>
+</div>
+{% endif %}
+
+<div class="container">
+  {% if not claimed %}
+  <section class="cta-upgrade">
+    <a class="btn btn-primary btn-lg" href="https://t.me/{{ bot_username }}?start=lp_{{ token }}" target="_blank" rel="noopener">
+      🎁 Получить 7 дней и 5 ГБ в Telegram
+    </a>
+    <p class="tiny">Жми кнопку — откроется @{{ bot_username }}, подписка продлится автоматически.</p>
+    <p class="tiny" style="opacity:0.75;margin-top:8px">Уже есть подписка у нас? Мы добавим <b>+1 день в подарок</b> к ней.</p>
+  </section>
+  {% else %}
+  <section class="cta-claimed">
+    <a class="btn btn-primary btn-lg" href="https://t.me/{{ bot_username }}" target="_blank" rel="noopener">
+      🤖 Перейти в бота
+    </a>
+  </section>
+  {% endif %}
+</div>
+
+<section id="how" class="how">
+  <div class="container">
+    <div class="section-head"><div><div class="section-tag">Как подключить</div><h2>Три шага.</h2></div></div>
+    <div class="steps steps-3">
+      <div class="step"><div class="step-num">Шаг 01</div><div class="step-title">Скачай клиент</div><div class="step-body">FLClash для Android/Windows/macOS или Karing для iOS (ссылки в футере /#platforms).</div></div>
+      <div class="step"><div class="step-num">Шаг 02</div><div class="step-title">Открой клиент</div><div class="step-body">Нажми <b>+</b> → <b>Import from URL</b>. В Karing (iOS) — <b>Импорт из буфера обмена</b>.</div></div>
+      <div class="step"><div class="step-num">Шаг 03</div><div class="step-title">Вставь ссылку</div><div class="step-body">Скопируй ссылку выше → вставь → нажми <b>Connect</b>. Готово.</div></div>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block body_end %}
+{% if sub_url %}
+<script>
+  window.SUB_URL = {{ sub_url|tojson }};
+  window.INSTALL_URL = {{ ("https://radarshield.mooo.com/i/" ~ token)|tojson }};
+</script>
+<script src="/static/app.js"></script>
+<script src="/static/qrcode.min.js"></script>
+<script src="/static/success.js"></script>
+{% endif %}
+{% endblock %}

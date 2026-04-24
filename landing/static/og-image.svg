@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0a1622"/>
+      <stop offset="50%" stop-color="#132238"/>
+      <stop offset="100%" stop-color="#0d1b2a"/>
+    </linearGradient>
+    <radialGradient id="glow1" cx="0.15" cy="0.1" r="0.4">
+      <stop offset="0%" stop-color="#fb8500" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#fb8500" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow2" cx="0.85" cy="0.85" r="0.4">
+      <stop offset="0%" stop-color="#38618d" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#38618d" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="shield" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffb703"/>
+      <stop offset="100%" stop-color="#fb8500"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#glow1)"/>
+  <rect width="1200" height="630" fill="url(#glow2)"/>
+  <g transform="translate(120, 180)">
+    <path d="M80 0 L160 30 L160 110 Q160 190 80 230 Q0 190 0 110 L0 30 Z" fill="url(#shield)"/>
+    <text x="80" y="145" text-anchor="middle" font-family="-apple-system,Segoe UI,sans-serif" font-size="100" font-weight="800" fill="#0d1b2a">R</text>
+  </g>
+  <text x="340" y="240" font-family="-apple-system,Segoe UI,sans-serif" font-size="82" font-weight="800" fill="#ffffff">RadarShield</text>
+  <text x="340" y="310" font-family="-apple-system,Segoe UI,sans-serif" font-size="36" font-weight="500" fill="#cdd5df">умный доступ к интернет-ресурсам</text>
+  <text x="340" y="380" font-family="-apple-system,Segoe UI,sans-serif" font-size="32" font-weight="400" fill="#e0e1dd">3 часа бесплатно без регистрации</text>
+  <text x="340" y="430" font-family="-apple-system,Segoe UI,sans-serif" font-size="32" font-weight="400" fill="#ffb703">+7 дней и 5 ГБ в подарок через Telegram</text>
+  <g transform="translate(340, 500)">
+    <text y="30" font-family="-apple-system,Segoe UI,sans-serif" font-size="28" font-weight="500" fill="#8892a0">VLESS Reality · умная маршрутизация · Android · iOS · Windows · macOS</text>
+  </g>
+</svg>

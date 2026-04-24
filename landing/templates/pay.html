@@ -1,0 +1,68 @@
+{% extends "_base.html" %}
+{% block title %}Оплата подписки RadarShield{% endblock %}
+{% block meta %}<meta name="description" content="Оплата подписки RadarShield">{% endblock %}
+
+{% block body %}
+<section class="hero compact">
+  <div class="hero-bg"></div>
+  <div class="container" style="text-align:center;position:relative;z-index:2">
+    <h1>💳 Оплата подписки</h1>
+    <p class="sub">Оплата картой — безопасно через Т&#8209;Банк. Подписка активируется автоматически.</p>
+  </div>
+</section>
+
+<div class="container">
+  <div class="plans">
+    {% for key, plan in plans.items() %}
+    <div class="price-card{% if key == '1y' %} featured{% endif %}">
+      {% if key == '1y' %}<span class="price-badge">Выгоднее всего</span>{% endif %}
+      <div class="price-name">{{ plan.name }}</div>
+      <div class="price-value">{{ plan.rub_str }}</div>
+      {% if plan.per_month %}
+      <div style="color:var(--ink-mute);font-size:13px;margin-top:-8px">{{ plan.per_month }} ₽/мес{% if plan.discount %} · <span style="color:var(--ok)">−{{ plan.discount }}%</span>{% endif %}</div>
+      {% endif %}
+      <button class="btn btn-{% if key == '1y' %}primary{% else %}ghost{% endif %} plan-pay" data-plan="{{ key }}" data-amount="{{ plan.rub_kopeks }}" style="margin-top:auto;justify-content:center">Оплатить</button>
+    </div>
+    {% endfor %}
+  </div>
+
+  <p class="tiny" style="text-align:center;max-width:600px;margin:24px auto 60px">
+    После нажатия откроется форма Т&#8209;Банка для ввода карты. Мы не храним данные карты —
+    транзакция обрабатывается на стороне банка (PCI DSS Level 1).
+  </p>
+</div>
+{% endblock %}
+
+{% block body_end %}
+<script>
+(function() {
+  var uid = {{ uid|tojson }};
+  var sig = {{ sig|tojson }};
+
+  document.querySelectorAll('.plan-pay').forEach(function(btn) {
+    btn.addEventListener('click', async function() {
+      var plan = btn.dataset.plan;
+      btn.disabled = true;
+      btn.textContent = 'Создаём счёт...';
+      try {
+        var resp = await fetch('/api/tinkoff/init', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({uid: uid, sig: sig, plan: plan}),
+        });
+        var data = await resp.json();
+        if (data.error) {
+          btn.textContent = data.error;
+          setTimeout(function() { btn.disabled = false; btn.textContent = 'Оплатить'; }, 3000);
+          return;
+        }
+        window.location.href = data.payment_url;
+      } catch (e) {
+        btn.textContent = 'Ошибка сети';
+        setTimeout(function() { btn.disabled = false; btn.textContent = 'Оплатить'; }, 3000);
+      }
+    });
+  });
+})();
+</script>
+{% endblock %}

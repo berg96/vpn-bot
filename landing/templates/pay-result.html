@@ -1,0 +1,25 @@
+{% extends "_base.html" %}
+{% block title %}{{ title }} — RadarShield{% endblock %}
+{% block meta %}<meta name="description" content="Статус оплаты">{% endblock %}
+
+{% block body %}
+<section class="hero compact">
+  <div class="hero-bg"></div>
+  <div class="container" style="text-align:center;position:relative;z-index:2">
+    <h1>{{ heading }}</h1>
+    <p class="sub" style="max-width:560px;margin:24px auto">{{ message }}</p>
+    <div style="margin-top:32px;display:flex;gap:14px;justify-content:center;flex-wrap:wrap">
+      {% if success %}
+      <a class="btn btn-primary btn-lg" href="https://t.me/{{ bot_username }}" target="_blank" rel="noopener">
+        🤖 Перейти в бота
+      </a>
+      {% else %}
+      <a class="btn btn-primary btn-lg" href="https://t.me/{{ bot_username }}" target="_blank" rel="noopener">
+        🤖 Открыть бота
+      </a>
+      {% endif %}
+      <a class="btn btn-ghost btn-lg" href="/">На главную</a>
+    </div>
+  </div>
+</section>
+{% endblock %}
