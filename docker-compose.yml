@@ -8,3 +8,16 @@ services:
     volumes:
       - ./data:/data
     network_mode: host
+
+  landing:
+    build:
+      context: .
+      dockerfile: landing/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_PATH: /data/vpn_bot.db
+      BOT_USERNAME: radarshield_bot
+    volumes:
+      - ./data:/data
+    network_mode: host
