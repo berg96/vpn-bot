@@ -30,3 +30,52 @@
 бессмысленно. Когда появится per-device архитектура — вернуть как опцию:
 при заходе с нового устройства через landing → "привязать этот landing-профиль как
 ещё одно устройство" (в рамках лимита плана).
+
+## Captive VPN для expired-юзеров + auto-identify
+
+**Проблема:** если просто отключить VPN при истечении подписки — юзер не сможет оплатить:
+без VPN не зайти в Telegram (РФ-блок), а ссылка на оплату в боте. Замкнутый круг.
+
+**Решение:** перевести expired-юзера на ограниченный VPN-туннель, где разрешён только
+наш сайт + Тинькофф (без Telegram — иначе юзеры будут «жить» в captive ради TG).
+
+### Captive Xray
+- Отдельный Xray-инстанс в `docker-compose.yml`, свой порт + свой `xray-captive.json`.
+- Routing rules: whitelist `radarshield.mooo.com` + `*.tinkoff.ru` + `*.tbank.ru` + DNS
+  (8.8.8.8, 1.1.1.1). Всё остальное — block.
+- **Один общий VLESS UUID** для всех expired (не per-user — на MVP не нужно). Per-user
+  UUID — отдельная задача после первых данных по retention/abuse.
+- В fake-sub отдаём рабочий VLESS-конфиг этого captive Xray (вместо `127.0.0.1` сейчас).
+
+### Auto-identify юзера на сайте
+Когда юзер заходит на `radarshield.mooo.com/` через captive — мы видим только обычный
+HTTP-запрос без меток (UUID общий, source IP общий). Идентификация в порядке убывания:
+
+1. **Cookie** — если юзер уже был на сайте (триал, оплата) — у него осталась cookie с
+   `tg_id` (или с `pay_token`, который мапится в БД на tg_id). Читаем → редирект на
+   `/pay?tg=...&sig=...`. Покрывает ~80%.
+2. **URL с tg_id** (запасной канал) — в имени фейк-сервера sub-content'a кладём строку
+   `🔴 Оплата: radarshield.mooo.com/pay?tg={tg_id}&sig={hmac}`. Юзер видит её в Karing/
+   FLClash, копирует, открывает в браузере → tg_id уже в URL.
+3. **Ручной ввод @username** (fallback) — если cookie нет и юзер пришёл просто на
+   `radarshield.mooo.com/` без параметров: показать форму «Похоже, твоя подписка
+   истекла. Введи свой Telegram username — я найду тебя». Поиск по `users.username`
+   → `tg_id` → редирект на `/pay`.
+
+**Из VPN-клиента (Karing/FLClash) tg_id обратно НЕ достать** — он не знает кто мы и
+не передаёт user-info в HTTP. Только cookie / URL params / форма.
+
+### Pay-link с подписью
+`?tg=NNN&sig=HMAC(tg_id, SECRET)` — чтобы по чужому tg_id не оплачивали.
+
+### Оценка работ
+- Captive Xray (config + compose) — 1.5ч
+- Генерация VLESS captive URL + интеграция в `_expired_sub_response` — 0.5ч
+- Подпись pay-link + handler `/pay` принимает `tg+sig` — 0.5ч
+- Cookie-based redirect на корне + fallback `/find` — 1ч
+- Тест в Karing/FLClash — 0.5ч
+- **Итого:** 4ч
+
+**Когда делать:** после 5-10 реальных истечений подписок, чтобы данные показали
+насколько срочно это нужно. Пока работают TG-уведомления за 24ч/1ч + fake-sub
+с remark — посмотрим конверсию.
