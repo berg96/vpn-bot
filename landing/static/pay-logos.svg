@@ -14,12 +14,8 @@
     <rect x="2" y="4" width="56" height="12" rx="2" fill="#5b2ec5"/>
     <text x="30" y="13" text-anchor="middle" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#fff">СБП</text>
   </symbol>
-  <symbol id="logo-tbank" viewBox="0 0 60 20">
-    <rect x="2" y="4" width="56" height="12" rx="2" fill="#ffdd2d"/>
-    <text x="30" y="13" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" font-weight="800" fill="#000">Т-Банк</text>
-  </symbol>
-  <symbol id="logo-tpay" viewBox="0 0 60 20">
-    <rect x="2" y="4" width="56" height="12" rx="2" fill="#1e1e1e"/>
-    <text x="30" y="13" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" font-weight="800" fill="#ffdd2d">T-Pay</text>
+  <symbol id="logo-robokassa" viewBox="0 0 80 20">
+    <rect x="2" y="4" width="76" height="12" rx="2" fill="#f47322"/>
+    <text x="40" y="13" text-anchor="middle" font-family="Arial, sans-serif" font-size="8" font-weight="800" fill="#fff">ROBOKASSA</text>
   </symbol>
 </svg>
