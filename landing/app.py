@@ -33,6 +33,10 @@ if os.environ.get("SUPPORT_BOT_TOKEN"):
 SUPPORT_GROUP_ID = int(os.environ.get("SUPPORT_GROUP_ID", 0))
 ALERT_TOPIC_ID = int(os.environ.get("ALERT_TOPIC_ID", 33))
 
+# Ручной kill-switch: пока касса не работает, ставим в .env CARD_PAYMENT_ENABLED=0,
+# чтобы /pay сразу показывал «недоступно» без обращения к API эквайринга.
+CARD_PAYMENT_ENABLED = os.environ.get("CARD_PAYMENT_ENABLED", "1") == "1"
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -556,7 +560,7 @@ async def pay_page(request: Request, uid: str = "", sig: str = ""):
             status_code=200,
         )
 
-    if not await _acquiring_healthy():
+    if not CARD_PAYMENT_ENABLED or not await _acquiring_healthy():
         return templates.TemplateResponse(
             "pay-result.html",
             {
