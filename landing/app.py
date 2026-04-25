@@ -2,6 +2,7 @@ import hashlib
 import logging
 import os
 import secrets
+import time
 from datetime import datetime, timezone, timedelta
 
 import aiohttp
@@ -26,6 +27,8 @@ if os.environ.get("BOT_TOKEN"):
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+CARD_PAYMENT_ENABLED = os.environ.get("CARD_PAYMENT_ENABLED", "1") == "1"
 
 BOT_USERNAME = os.environ.get("BOT_USERNAME", "radarshield_bot")
 SUPPORT_USERNAME = os.environ.get("SUPPORT_USERNAME", "radarshield_support_bot")
@@ -56,6 +59,30 @@ def _page_context(request):
 
 # алиас для шаблонов документов — они используют тот же контекст
 _doc_context = _page_context
+
+# --- Tinkoff health check (кеш 5 минут) ---
+_tk_health: tuple[bool, float] = (True, 0.0)
+
+async def _tinkoff_healthy() -> bool:
+    global _tk_health
+    now = time.time()
+    if now - _tk_health[1] < 300:
+        return _tk_health[0]
+    try:
+        async with aiohttp.ClientSession() as s:
+            data = await tinkoff.get_state(s, "health-check")
+        msg = (data.get("Message") or data.get("Details") or "").lower()
+        # Авторизационные ошибки — терминал сломан; остальные (платёж не найден) — норма
+        ok = not any(w in msg for w in ("unauthorized", "не авториз", "терминал не найден", "blocked"))
+    except Exception as e:
+        logger.error(f"Tinkoff health check failed: {e}")
+        ok = False
+    _tk_health = (ok, now)
+    return ok
+
+# UIDs, которым уже отправили алерт о систематической недоступности (сбрасывается при рестарте)
+_pay_unavail_alerted: set[str] = set()
+
 IP_SALT = os.environ.get("LANDING_IP_SALT", "change-me")
 TRIAL_HOURS = int(os.environ.get("LANDING_TRIAL_HOURS", "3"))
 TRIAL_DATA_MB = int(os.environ.get("LANDING_TRIAL_MB", "500"))
@@ -496,6 +523,46 @@ async def pay_page(request: Request, uid: str = "", sig: str = ""):
             status_code=200,
         )
 
+    # --- Проверяем доступность эквайринга ---
+    card_ok = CARD_PAYMENT_ENABLED and await _tinkoff_healthy()
+
+    if not card_ok:
+        # Систематика: если пользователь уже видел эту страницу — шлём алерт
+        already_warned = request.cookies.get("pay_unavail") == "1"
+        if already_warned and uid and uid not in _pay_unavail_alerted:
+            _pay_unavail_alerted.add(uid)
+            if _tg_bot:
+                admin_id = int(os.environ.get("ADMIN_TG_ID", 0))
+                if admin_id:
+                    try:
+                        await _tg_bot.send_message(
+                            admin_id,
+                            f"⚠️ <b>Эквайринг недоступен — систематически</b>\n"
+                            f"Пользователь <code>{uid}</code> дважды видит страницу «оплата недоступна».\n"
+                            f"Проверь Tinkoff / CARD_PAYMENT_ENABLED.",
+                            parse_mode="HTML",
+                        )
+                    except Exception as e:
+                        logger.error(f"pay_unavail alert failed: {e}")
+
+        resp = templates.TemplateResponse(
+            "pay-result.html",
+            {
+                **_page_context(request),
+                "title": "Оплата временно недоступна",
+                "heading": "🛠 Оплата картой временно недоступна",
+                "message": (
+                    "К сожалению, оплата картой сейчас временно недоступна. "
+                    "Попробуйте позже или обратитесь в службу поддержки — поможем оформить вручную."
+                ),
+                "success": False,
+            },
+            status_code=200,
+        )
+        resp.set_cookie("pay_unavail", "1", max_age=300, httponly=True, samesite="lax")
+        return resp
+
+    # Оплата доступна — сбрасываем cookie недоступности
     import config as _cfg
     plans_display = {}
     for key, (name, days, stars, stars_str, rub_kopeks, rub_str) in _cfg.PLANS.items():
@@ -507,12 +574,14 @@ async def pay_page(request: Request, uid: str = "", sig: str = ""):
             "per_month": int(per_month) if days != 30 else None,
             "discount": int((1 - per_month / 250) * 100) if days != 30 else None,
         }
-    return templates.TemplateResponse("pay.html", {
+    resp = templates.TemplateResponse("pay.html", {
         **_page_context(request),
         "uid": uid,
         "sig": sig,
         "plans": plans_display,
     })
+    resp.delete_cookie("pay_unavail")
+    return resp
 
 
 @app.post("/api/tinkoff/init")
