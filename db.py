@@ -100,6 +100,21 @@ def init_db():
         c.execute("CREATE INDEX IF NOT EXISTS ix_tinkoff_payment_id ON tinkoff_payments(payment_id)")
         c.execute("CREATE INDEX IF NOT EXISTS ix_tinkoff_tg_id ON tinkoff_payments(tg_id)")
 
+        # Robokassa rub-платежи: pending → confirmed/rejected. InvId = autoincrement,
+        # отдаётся юзеру в URL формы оплаты; Robokassa возвращает его в Result/Success.
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS robokassa_payments (
+                inv_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tg_id INTEGER NOT NULL,
+                plan_key TEXT NOT NULL,
+                amount_kopeks INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                created_at TEXT NOT NULL,
+                confirmed_at TEXT
+            )
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS ix_robokassa_tg_id ON robokassa_payments(tg_id)")
+
 
 def record_user(tg_id: int, username: str | None) -> bool:
     """Возвращает True если пользователь новый."""
@@ -502,6 +517,44 @@ def mark_tinkoff_rejected(order_id: str) -> None:
             "UPDATE tinkoff_payments SET status='rejected' WHERE order_id=? AND status='pending'",
             (order_id,),
         )
+
+
+def create_robokassa_pending(tg_id: int, plan_key: str, amount_kopeks: int) -> int:
+    with _conn() as c:
+        cur = c.execute(
+            "INSERT INTO robokassa_payments (tg_id, plan_key, amount_kopeks, status, created_at) "
+            "VALUES (?, ?, ?, 'pending', ?)",
+            (tg_id, plan_key, amount_kopeks, _now_iso()),
+        )
+        return cur.lastrowid
+
+
+def get_robokassa_payment(inv_id: int) -> dict | None:
+    with _conn() as c:
+        row = c.execute(
+            "SELECT inv_id, tg_id, plan_key, amount_kopeks, status, created_at, confirmed_at "
+            "FROM robokassa_payments WHERE inv_id=?",
+            (inv_id,),
+        ).fetchone()
+    if not row:
+        return None
+    return {
+        "inv_id": row[0], "tg_id": row[1], "plan_key": row[2],
+        "amount_kopeks": row[3], "status": row[4],
+        "created_at": row[5], "confirmed_at": row[6],
+    }
+
+
+def mark_robokassa_confirmed(inv_id: int) -> bool:
+    """Атомарно pending → confirmed. True только при первом успешном переходе
+    (idempotency — Robokassa может ретраить webhook)."""
+    with _conn() as c:
+        cur = c.execute(
+            "UPDATE robokassa_payments SET status='confirmed', confirmed_at=? "
+            "WHERE inv_id=? AND status != 'confirmed'",
+            (_now_iso(), inv_id),
+        )
+        return cur.rowcount > 0
 
 
 def get_users_with_mz() -> list[dict]:

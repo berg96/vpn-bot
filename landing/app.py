@@ -7,13 +7,14 @@ from datetime import datetime, timezone, timedelta
 
 import aiohttp
 from fastapi import FastAPI, Request, Form, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 import db
 import marzban
+import robokassa
 import tinkoff
 import sub_tokens
 
@@ -102,10 +103,7 @@ async def _acquiring_healthy() -> bool:
         return _acquiring_health[0]
     try:
         async with aiohttp.ClientSession() as s:
-            data = await tinkoff.get_state(s, "health-check")
-        msg = (data.get("Message") or data.get("Details") or "").lower()
-        # Авторизационные ошибки — терминал сломан; остальные (платёж не найден) — норма
-        ok = not any(w in msg for w in ("unauthorized", "не авториз", "терминал не найден", "blocked"))
+            ok = await robokassa.health_check(s)
     except Exception as e:
         logger.error(f"Acquiring health check failed: {e}")
         ok = False
@@ -744,6 +742,142 @@ async def tinkoff_notification(request: Request):
                      {"plan": payment["plan_key"], "provider": "tinkoff"})
 
     return "OK"
+
+
+@app.post("/api/robokassa/init")
+async def robokassa_init_payment(request: Request):
+    data = await request.json()
+    uid = str(data.get("uid", ""))
+    sig = data.get("sig", "")
+    plan_key = data.get("plan", "")
+
+    if not uid or not sig or not _verify_pay_sig(uid, sig):
+        return {"error": "Ссылка недействительна"}
+
+    import config as _cfg
+    plan = _cfg.PLANS.get(plan_key)
+    if not plan:
+        return {"error": "Неизвестный тариф"}
+    name, days, stars, stars_str, rub_kopeks, rub_str = plan
+
+    tg_id = int(uid)
+    amount_rub = rub_kopeks / 100
+
+    inv_id = db.create_robokassa_pending(
+        tg_id=tg_id, plan_key=plan_key, amount_kopeks=rub_kopeks,
+    )
+
+    item_name = f"{robokassa.RECEIPT_ITEM_NAME_PREFIX}, {name}"
+    receipt = robokassa.build_receipt(item_name=item_name, amount_rub=amount_rub)
+    payment_url = robokassa.make_payment_url(
+        inv_id=inv_id,
+        amount_rub=amount_rub,
+        description=item_name,
+        receipt=receipt,
+        customer_email=robokassa.RECEIPT_DEFAULT_EMAIL,
+        shp={"Shp_plan": plan_key, "Shp_uid": str(tg_id)},
+    )
+
+    db.log_event(tg_id, "pay_initiated",
+                 {"plan": plan_key, "amount_rub": amount_rub,
+                  "provider": "robokassa", "inv_id": inv_id})
+
+    return {"payment_url": payment_url, "inv_id": inv_id}
+
+
+@app.post("/api/robokassa/result")
+async def robokassa_result(request: Request):
+    """Webhook от Robokassa. Шлётся после авторизации платежа.
+    Должны вернуть 'OK{InvId}' plain-text — иначе ретраи."""
+    form = await request.form()
+    payload = {k: str(v) for k, v in form.items()}
+    logger.info(f"robokassa result: {payload}")
+
+    out_sum = payload.get("OutSum", "")
+    inv_id_str = payload.get("InvId", "")
+    signature = payload.get("SignatureValue", "")
+    shp = {k: v for k, v in payload.items() if k.startswith("Shp_")}
+
+    if not robokassa.verify_result(out_sum, inv_id_str, signature, shp):
+        logger.error(f"robokassa result: bad signature, payload={payload}")
+        return PlainTextResponse("bad signature", status_code=400)
+
+    try:
+        inv_id = int(inv_id_str)
+    except ValueError:
+        return PlainTextResponse("bad inv_id", status_code=400)
+
+    payment = db.get_robokassa_payment(inv_id)
+    if not payment:
+        logger.warning(f"robokassa result: unknown inv_id={inv_id}")
+        return PlainTextResponse(f"OK{inv_id}", status_code=200)
+
+    # Идемпотентность: дубль webhook'а просто отвечает OK без повторной активации.
+    if not db.mark_robokassa_confirmed(inv_id):
+        return PlainTextResponse(f"OK{inv_id}", status_code=200)
+
+    tg_id = payment["tg_id"]
+    plan_key = payment["plan_key"]
+    rub_kopeks = payment["amount_kopeks"]
+
+    import config
+    plan = config.PLANS.get(plan_key)
+    if not plan:
+        logger.error(f"robokassa confirm: unknown plan {plan_key}")
+        return PlainTextResponse(f"OK{inv_id}", status_code=200)
+    name, days, stars, stars_str, _rub_kopeks, rub_str = plan
+
+    db.record_payment(tg_id=tg_id, plan_key=plan_key,
+                      stars=rub_kopeks, charge_id=f"robokassa-{inv_id}")
+    db.delete_reminder_events(tg_id)
+    db.log_event(tg_id, "pay_success",
+                 {"plan": plan_key, "amount_rub": rub_kopeks / 100,
+                  "provider": "robokassa", "inv_id": inv_id})
+
+    try:
+        async with aiohttp.ClientSession() as s:
+            mz_username = db.get_mz_username(tg_id)
+            if not mz_username:
+                mz_username = marzban.build_mz_username(tg_id)
+                db.set_mz_username(tg_id, mz_username)
+            user_data = await marzban.create_or_extend_user(s, tg_id, days, mz_username=mz_username)
+        mz_sub_url = user_data.get("subscription_url", "")
+        if mz_sub_url:
+            db.set_sub_url(tg_id, mz_sub_url)
+        sub_url = f"https://radarshield.mooo.com/sub/{sub_tokens.make_sub_token(tg_id)}"
+        expire_ts = user_data.get("expire")
+        expire_str = (
+            datetime.fromtimestamp(expire_ts, tz=timezone.utc).strftime("%d.%m.%Y")
+            if expire_ts else "—"
+        )
+    except Exception as e:
+        logger.error(f"robokassa confirm: marzban failed for inv_id={inv_id}: {e}")
+        return PlainTextResponse(f"OK{inv_id}", status_code=200)
+
+    if _tg_bot and tg_id:
+        from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+        try:
+            await _tg_bot.send_message(
+                tg_id,
+                f"✅ <b>Оплата {rub_str} прошла! Подписка активирована до {expire_str}</b>\n\n"
+                f"🔗 Твоя ссылка:\n<code>{sub_url}</code>\n\n"
+                "Нажми <b>📲 Открыть в приложении</b> — клиент откроется с готовым импортом.",
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="👤 Профиль", callback_data="profile")],
+                    [InlineKeyboardButton(text="📲 Открыть в приложении",
+                                          url=f"https://radarshield.mooo.com/open/{mz_username}")],
+                ]),
+            )
+            if int(os.environ.get("ADMIN_TG_ID", 0)):
+                await _tg_bot.send_message(
+                    int(os.environ["ADMIN_TG_ID"]),
+                    f"💰 Robokassa-оплата: tg {tg_id}, план {plan_key}, {rub_str}",
+                )
+        except Exception as e:
+            logger.error(f"robokassa confirm: tg notify failed: {e}")
+
+    return PlainTextResponse(f"OK{inv_id}", status_code=200)
 
 
 @app.get("/pay/success", response_class=HTMLResponse)
