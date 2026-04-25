@@ -25,10 +25,16 @@ _tg_bot: _TGBot | None = None
 if os.environ.get("BOT_TOKEN"):
     _tg_bot = _TGBot(token=os.environ["BOT_TOKEN"])
 
+# Отдельный бот поддержки для алертов в топик группы
+_support_bot: _TGBot | None = None
+if os.environ.get("SUPPORT_BOT_TOKEN"):
+    _support_bot = _TGBot(token=os.environ["SUPPORT_BOT_TOKEN"])
+
+SUPPORT_GROUP_ID = int(os.environ.get("SUPPORT_GROUP_ID", 0))
+ALERT_TOPIC_ID = int(os.environ.get("ALERT_TOPIC_ID", 33))
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-CARD_PAYMENT_ENABLED = os.environ.get("CARD_PAYMENT_ENABLED", "1") == "1"
 
 BOT_USERNAME = os.environ.get("BOT_USERNAME", "radarshield_bot")
 SUPPORT_USERNAME = os.environ.get("SUPPORT_USERNAME", "radarshield_support_bot")
@@ -60,14 +66,36 @@ def _page_context(request):
 # алиас для шаблонов документов — они используют тот же контекст
 _doc_context = _page_context
 
-# --- Tinkoff health check (кеш 5 минут) ---
-_tk_health: tuple[bool, float] = (True, 0.0)
+# --- Acquiring health check (кеш 5 минут) ---
+_acquiring_health: tuple[bool, float] = (True, 0.0)
+# Глобальный счётчик последовательных провалов (на реальных проверках, не закешированных)
+_fail_streak: int = 0
+_fail_alerted: bool = False  # алерт уже отправлен в текущей "полосе" ошибок
 
-async def _tinkoff_healthy() -> bool:
-    global _tk_health
+
+async def _send_acquiring_alert() -> None:
+    bot = _support_bot or _tg_bot
+    if not bot or not SUPPORT_GROUP_ID:
+        return
+    try:
+        await bot.send_message(
+            -1000000000000 - SUPPORT_GROUP_ID if SUPPORT_GROUP_ID > 0 else SUPPORT_GROUP_ID,
+            "⚠️ <b>Эквайринг недоступен — 5 проверок подряд</b>\n\n"
+            "Health check возвращает ошибку уже 5 раз подряд.\n"
+            "Проверь настройки эквайринга / CARD_PAYMENT_ENABLED.",
+            parse_mode="HTML",
+            message_thread_id=ALERT_TOPIC_ID,
+        )
+    except Exception as e:
+        logger.error(f"acquiring alert send failed: {e}")
+
+
+async def _acquiring_healthy() -> bool:
+    """Проверяет доступность эквайринга. Кеш 5 мин, алерт на 5 провалов подряд."""
+    global _acquiring_health, _fail_streak, _fail_alerted
     now = time.time()
-    if now - _tk_health[1] < 300:
-        return _tk_health[0]
+    if now - _acquiring_health[1] < 300:
+        return _acquiring_health[0]
     try:
         async with aiohttp.ClientSession() as s:
             data = await tinkoff.get_state(s, "health-check")
@@ -75,13 +103,18 @@ async def _tinkoff_healthy() -> bool:
         # Авторизационные ошибки — терминал сломан; остальные (платёж не найден) — норма
         ok = not any(w in msg for w in ("unauthorized", "не авториз", "терминал не найден", "blocked"))
     except Exception as e:
-        logger.error(f"Tinkoff health check failed: {e}")
+        logger.error(f"Acquiring health check failed: {e}")
         ok = False
-    _tk_health = (ok, now)
+    _acquiring_health = (ok, now)
+    if ok:
+        _fail_streak = 0
+        _fail_alerted = False
+    else:
+        _fail_streak += 1
+        if _fail_streak >= 5 and not _fail_alerted:
+            _fail_alerted = True
+            await _send_acquiring_alert()
     return ok
-
-# UIDs, которым уже отправили алерт о систематической недоступности (сбрасывается при рестарте)
-_pay_unavail_alerted: set[str] = set()
 
 IP_SALT = os.environ.get("LANDING_IP_SALT", "change-me")
 TRIAL_HOURS = int(os.environ.get("LANDING_TRIAL_HOURS", "3"))
@@ -523,29 +556,8 @@ async def pay_page(request: Request, uid: str = "", sig: str = ""):
             status_code=200,
         )
 
-    # --- Проверяем доступность эквайринга ---
-    card_ok = CARD_PAYMENT_ENABLED and await _tinkoff_healthy()
-
-    if not card_ok:
-        # Систематика: если пользователь уже видел эту страницу — шлём алерт
-        already_warned = request.cookies.get("pay_unavail") == "1"
-        if already_warned and uid and uid not in _pay_unavail_alerted:
-            _pay_unavail_alerted.add(uid)
-            if _tg_bot:
-                admin_id = int(os.environ.get("ADMIN_TG_ID", 0))
-                if admin_id:
-                    try:
-                        await _tg_bot.send_message(
-                            admin_id,
-                            f"⚠️ <b>Эквайринг недоступен — систематически</b>\n"
-                            f"Пользователь <code>{uid}</code> дважды видит страницу «оплата недоступна».\n"
-                            f"Проверь Tinkoff / CARD_PAYMENT_ENABLED.",
-                            parse_mode="HTML",
-                        )
-                    except Exception as e:
-                        logger.error(f"pay_unavail alert failed: {e}")
-
-        resp = templates.TemplateResponse(
+    if not await _acquiring_healthy():
+        return templates.TemplateResponse(
             "pay-result.html",
             {
                 **_page_context(request),
@@ -559,10 +571,7 @@ async def pay_page(request: Request, uid: str = "", sig: str = ""):
             },
             status_code=200,
         )
-        resp.set_cookie("pay_unavail", "1", max_age=300, httponly=True, samesite="lax")
-        return resp
 
-    # Оплата доступна — сбрасываем cookie недоступности
     import config as _cfg
     plans_display = {}
     for key, (name, days, stars, stars_str, rub_kopeks, rub_str) in _cfg.PLANS.items():
@@ -574,14 +583,12 @@ async def pay_page(request: Request, uid: str = "", sig: str = ""):
             "per_month": int(per_month) if days != 30 else None,
             "discount": int((1 - per_month / 250) * 100) if days != 30 else None,
         }
-    resp = templates.TemplateResponse("pay.html", {
+    return templates.TemplateResponse("pay.html", {
         **_page_context(request),
         "uid": uid,
         "sig": sig,
         "plans": plans_display,
     })
-    resp.delete_cookie("pay_unavail")
-    return resp
 
 
 @app.post("/api/tinkoff/init")

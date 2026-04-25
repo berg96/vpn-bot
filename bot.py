@@ -129,7 +129,7 @@ def plans_keyboard(tg_id: int | None = None) -> InlineKeyboardMarkup:
         )])
     if tg_id:
         buttons.append([InlineKeyboardButton(
-            text="💳 Оплатить картой на сайте", url=_pay_url(tg_id),
+            text="💳 Оплата картой", url=_pay_url(tg_id),
         )])
     buttons.append([
         InlineKeyboardButton(text="👤 Профиль", callback_data="profile"),
