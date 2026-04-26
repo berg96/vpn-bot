@@ -70,6 +70,10 @@
       try { cfToken = window.turnstile.getResponse() || ''; } catch (_) {}
     }
 
+    function resetCaptcha() {
+      if (window.turnstile) try { window.turnstile.reset(); } catch (_) {}
+    }
+
     try {
       var resp = await fetch('/api/user/lookup', {
         method: 'POST',
@@ -77,17 +81,16 @@
         body: JSON.stringify({username: raw, cf_token: cfToken}),
       });
       var data = await resp.json();
-      if (data.error === 'captcha_failed') {
-        setStatus('Не удалось подтвердить, что ты не бот. Обнови страницу и попробуй снова.', 'var(--err,#eb001b)');
-        if (window.turnstile) try { window.turnstile.reset(); } catch (_) {}
-        return;
-      }
       if (data.ok && data.redirect_url) {
         setStatus('Нашли @' + data.username + '. Открываем форму оплаты...', 'var(--ok,#34c759)');
         window.location.href = data.redirect_url;
         return;
       }
-      if (data.error === 'invalid_format') {
+      // Любая ветка ниже = retry-able. Токен одноразовый и живёт 5 минут —
+      // обновляем виджет, чтобы при следующем нажатии был свежий токен.
+      if (data.error === 'captcha_failed') {
+        setStatus('Не удалось подтвердить, что ты не бот. Попробуй ещё раз.', 'var(--err,#eb001b)');
+      } else if (data.error === 'invalid_format') {
         setStatus('Логин может содержать только латиницу, цифры и подчёркивания, длина 4–32.', 'var(--warn,#f59f00)');
       } else if (data.error === 'not_found') {
         var hours = data.trial_hours || 3;
@@ -101,8 +104,10 @@
       } else {
         setStatus('Что-то пошло не так. Попробуй ещё раз.', 'var(--err,#eb001b)');
       }
+      resetCaptcha();
     } catch (e) {
       setStatus('Ошибка сети. Проверь интернет и попробуй снова.', 'var(--err,#eb001b)');
+      resetCaptcha();
     } finally {
       btn.disabled = false;
       btn.textContent = origLabel;
