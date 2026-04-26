@@ -173,7 +173,7 @@ APPS_TEXT = {
         "2. Открой бота → /profile → скопируй ссылку подписки\n\n"
         "3. В Karing: нажми <b>+</b> → <b>Импорт из буфера обмена</b>\n\n"
         "4. Нажми <b>Connect</b>\n\n"
-        "✅ Готово! При первом запуске разреши добавление VPN-профиля."
+        "✅ Готово! При первом запуске разреши добавление профиля."
     ),
     "windows": (
         "💻 <b>Windows — FLClash</b>\n\n"
@@ -194,8 +194,8 @@ APPS_TEXT = {
     "routing": (
         "🔧 <b>Умная маршрутизация</b>\n\n"
         "Российские сайты (VK, Яндекс, Госуслуги, Сбер и др.) открываются напрямую — "
-        "без VPN и без потери скорости.\n"
-        "Всё остальное идёт через VPN.\n\n"
+        "без потери скорости.\n"
+        "Всё остальное идёт через сервис.\n\n"
         "Маршрутизация встроена в профиль автоматически.\n"
         "Просто добавь ссылку подписки в FLClash — всё настроится само."
     ),
@@ -228,7 +228,7 @@ async def _do_start(tg_id: int, username: str | None, first_name: str | None, an
 
     if not db.is_trial_used(tg_id):
         await answer_fn(
-            "🔐 <b>RadarShield VPN</b>\n\n"
+            "🔐 <b>RadarShield</b>\n\n"
             "⏳ Активирую пробный период...",
             parse_mode=ParseMode.HTML,
         )
@@ -261,14 +261,14 @@ async def _do_start(tg_id: int, username: str | None, first_name: str | None, an
         except Exception as e:
             logger.error(f"Trial creation failed for {tg_id}: {e}")
             await answer_fn(
-                "🔐 <b>VPN — быстро, надёжно, без лишних вопросов</b>\n\n"
+                "🔐 <b>RadarShield — быстро, надёжно, без лишних вопросов</b>\n\n"
                 "Выбери тариф:",
                 parse_mode=ParseMode.HTML,
                 reply_markup=start_keyboard(),
             )
     else:
         await answer_fn(
-            "🔐 <b>RadarShield VPN</b>\n\n"
+            "🔐 <b>RadarShield</b>\n\n"
             "Работает на Android, iOS, Windows, macOS.\n\n",
             parse_mode=ParseMode.HTML,
             reply_markup=start_keyboard(),
@@ -631,11 +631,11 @@ async def cb_buy(call: CallbackQuery):
     await call.answer()
     await bot.send_invoice(
         chat_id=call.from_user.id,
-        title=f"VPN — {name}",
-        description=f"VLESS Reality, без ограничений трафика, {days} дней",
+        title=f"RadarShield — {name}",
+        description=f"Подписка на сервис, {days} дней",
         payload=f"vpn:{plan_key}:{call.from_user.id}",
         currency="XTR",
-        prices=[LabeledPrice(label=f"VPN {name}", amount=stars)],
+        prices=[LabeledPrice(label=f"RadarShield {name}", amount=stars)],
     )
 
 
@@ -672,7 +672,7 @@ async def cmd_apps_menu(event: Message | CallbackQuery):
         return
 
     text = (
-        "📲 <b>Как подключить VPN</b>\n\n"
+        "📲 <b>Как подключить</b>\n\n"
         "Выбери свою платформу — дам пошаговую инструкцию:"
     )
     kb = apps_keyboard()
@@ -1106,7 +1106,7 @@ async def _send_expire_reminder(tg_id: int, hours_left: float, label: str) -> No
     if label == "expired":
         text = (
             "❌ <b>Твоя подписка истекла.</b>\n\n"
-            "VPN больше не работает. Продли подписку одним кликом — "
+            "Сервис больше не работает. Продли подписку одним кликом — "
             "ссылка в клиенте переживёт и станет активной снова."
         )
     elif label == "2h":
