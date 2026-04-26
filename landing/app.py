@@ -241,6 +241,13 @@ async def index(request: Request):
     })
 
 
+@app.get("/trial")
+async def trial_get_fallback(request: Request):
+    """Юзер набрал /trial в адресной строке или попал по истории. Endpoint
+    принимает только POST (форма с лендинга). Редирект на главную к CTA-блоку."""
+    return RedirectResponse(url="/#cta", status_code=303)
+
+
 @app.post("/trial")
 async def create_trial(
     request: Request,
