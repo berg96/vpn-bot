@@ -29,6 +29,51 @@
 {% if turnstile_site_key %}
 <link rel="preconnect" href="https://challenges.cloudflare.com" crossorigin>
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+<script>
+// Глобальные callbacks для Turnstile (interaction-only режим). Виджет
+// рендерится скрытым, токен прилетает в onTurnstileToken когда passive
+// verify прошла или юзер прошёл challenge. waitForCfToken возвращает
+// промис, резолвящийся когда токен готов (или по тайм-ауту).
+window.__cfToken = '';
+window.__cfWaiters = [];
+function onTurnstileToken(token) {
+  window.__cfToken = token || '';
+  var waiters = window.__cfWaiters;
+  window.__cfWaiters = [];
+  waiters.forEach(function(r) { r(window.__cfToken); });
+}
+function onTurnstileError() { window.__cfToken = ''; }
+function onTurnstileExpired() { window.__cfToken = ''; }
+function waitForCfToken(timeoutMs) {
+  if (window.__cfToken) return Promise.resolve(window.__cfToken);
+  return new Promise(function(resolve) {
+    var t = setTimeout(function() { resolve(''); }, timeoutMs || 8000);
+    window.__cfWaiters.push(function(tok) {
+      clearTimeout(t);
+      resolve(tok);
+    });
+  });
+}
+function resetTurnstile() {
+  window.__cfToken = '';
+  if (window.turnstile) try { window.turnstile.reset(); } catch (_) {}
+}
+</script>
+<style>
+/* Спиннер на disabled-кнопке во время capture-проверки/запроса. */
+.btn-loading::after {
+  content: '';
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: btn-spin 0.7s linear infinite;
+  margin-left: 10px;
+  vertical-align: -2px;
+}
+@keyframes btn-spin { to { transform: rotate(360deg); } }
+</style>
 {% endif %}
 <link rel="stylesheet" href="/static/landing.css">
 

@@ -47,48 +47,26 @@
 
 {% block body_end %}
 <script>
-// Глобальные callbacks для Turnstile-виджета (interaction-only режим).
-// Виджет вызывает onTurnstileToken когда токен готов (passive verify прошла
-// или юзер прошёл challenge). Храним токен и резолвим ожидающие промисы.
-window.__cfToken = '';
-window.__cfWaiters = [];
-function onTurnstileToken(token) {
-  window.__cfToken = token || '';
-  var waiters = window.__cfWaiters;
-  window.__cfWaiters = [];
-  waiters.forEach(function(r) { r(window.__cfToken); });
-}
-function onTurnstileExpired() { window.__cfToken = ''; }
-function onTurnstileError() { window.__cfToken = ''; }
-
-function waitForCfToken(timeoutMs) {
-  if (window.__cfToken) return Promise.resolve(window.__cfToken);
-  return new Promise(function(resolve) {
-    var done = false;
-    var t = setTimeout(function() {
-      if (done) return;
-      done = true;
-      resolve('');
-    }, timeoutMs || 8000);
-    window.__cfWaiters.push(function(tok) {
-      if (done) return;
-      done = true;
-      clearTimeout(t);
-      resolve(tok);
-    });
-  });
-}
-</script>
-<script>
 (function() {
   var input = document.getElementById('tg-username');
   var btn = document.getElementById('lookup-btn');
   var status = document.getElementById('lookup-status');
   var hasCaptcha = {{ 'true' if turnstile_site_key else 'false' }};
+  var origLabel = btn.textContent;
 
   function setStatus(text, color) {
     status.textContent = text;
     status.style.color = color || 'var(--ink-mute)';
+  }
+  function setBusy(label) {
+    btn.disabled = true;
+    btn.textContent = label;
+    btn.classList.add('btn-loading');
+  }
+  function setIdle() {
+    btn.disabled = false;
+    btn.textContent = origLabel;
+    btn.classList.remove('btn-loading');
   }
 
   async function lookup() {
@@ -98,26 +76,22 @@ function waitForCfToken(timeoutMs) {
       input.focus();
       return;
     }
-    btn.disabled = true;
-    var origLabel = btn.textContent;
-    btn.textContent = 'Ищем...';
+    setBusy('Ищем');
     setStatus('');
 
     var cfToken = '';
     if (hasCaptcha) {
+      if (!window.__cfToken) {
+        setStatus('Проверяем что ты не бот...', 'var(--ink-mute)');
+      }
       cfToken = await waitForCfToken(8000);
       if (!cfToken) {
         setStatus('Антибот-проверка не успела. Попробуй ещё раз через секунду.', 'var(--warn,#f59f00)');
-        if (window.turnstile) try { window.turnstile.reset(); } catch (_) {}
-        btn.disabled = false;
-        btn.textContent = origLabel;
+        resetTurnstile();
+        setIdle();
         return;
       }
-    }
-
-    function resetCaptcha() {
-      window.__cfToken = '';
-      if (window.turnstile) try { window.turnstile.reset(); } catch (_) {}
+      setStatus('');
     }
 
     try {
@@ -150,13 +124,12 @@ function waitForCfToken(timeoutMs) {
       } else {
         setStatus('Что-то пошло не так. Попробуй ещё раз.', 'var(--err,#eb001b)');
       }
-      resetCaptcha();
+      resetTurnstile();
     } catch (e) {
       setStatus('Ошибка сети. Проверь интернет и попробуй снова.', 'var(--err,#eb001b)');
-      resetCaptcha();
+      resetTurnstile();
     } finally {
-      btn.disabled = false;
-      btn.textContent = origLabel;
+      setIdle();
     }
   }
 

@@ -232,17 +232,21 @@
         </p>
       </div>
       <div class="right">
-        <form method="post" action="/trial">
+        <form id="trial-form" method="post" action="/trial">
           <input type="hidden" name="device_id" class="device_id">
           <input type="hidden" name="fingerprint" class="fingerprint">
           {% if turnstile_site_key %}
           <div class="cf-turnstile" data-sitekey="{{ turnstile_site_key }}" data-theme="dark"
                data-appearance="interaction-only"
+               data-callback="onTurnstileToken"
+               data-error-callback="onTurnstileError"
+               data-expired-callback="onTurnstileExpired"
                style="margin-bottom:12px;display:flex;justify-content:center"></div>
           {% endif %}
-          <button type="submit" class="btn btn-primary btn-lg" style="width:100%;justify-content:center">
+          <button id="trial-submit" type="submit" class="btn btn-primary btn-lg" style="width:100%;justify-content:center">
             Попробовать {{ trial_hours }} часа бесплатно
           </button>
+          <p id="trial-status" style="min-height:18px;margin:10px 0 0;color:var(--ink-mute);font-size:13px;text-align:center"></p>
         </form>
         <a class="btn btn-ghost btn-lg" href="https://t.me/{{ bot_username }}" target="_blank" rel="noopener" style="justify-content:center">
           <svg class="tg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12s5.37 12 12 12 12-5.37 12-12S18.63 0 12 0zm5.56 8.24l-1.86 8.77c-.14.62-.5.77-1.02.48l-2.82-2.08-1.36 1.31c-.15.15-.28.28-.57.28l.2-2.87 5.22-4.72c.23-.2-.05-.31-.35-.11l-6.45 4.06-2.78-.87c-.6-.19-.62-.6.13-.9l10.86-4.19c.5-.18.94.12.78.84z"/></svg>
@@ -271,5 +275,64 @@ window.addEventListener('load', function() {
       .catch(function(){});
   }
 });
+
+// Race protection для всех trial-форм (hero и #cta).
+// Виджет капчи стоит только в #cta-форме, токен пишется в window.__cfToken
+// глобально. Перехватываем submit любой trial-формы: если токен есть —
+// inject <input cf-turnstile-response> и submit; если нет — ждём.
+(function() {
+  var hasCaptcha = {{ 'true' if turnstile_site_key else 'false' }};
+  if (!hasCaptcha) return;
+  var forms = document.querySelectorAll('form[action="/trial"]');
+  var ctaStatus = document.getElementById('trial-status');
+  var bypass = new WeakSet();
+
+  function ensureTokenInput(form, token) {
+    var input = form.querySelector('input[name="cf-turnstile-response"]');
+    if (!input) {
+      input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'cf-turnstile-response';
+      form.appendChild(input);
+    }
+    input.value = token;
+  }
+
+  forms.forEach(function(form) {
+    form.addEventListener('submit', async function(e) {
+      if (bypass.has(form)) return;
+      var btn = form.querySelector('button[type="submit"]');
+      var origLabel = btn ? btn.textContent : '';
+      if (window.__cfToken) {
+        ensureTokenInput(form, window.__cfToken);
+        return;
+      }
+      e.preventDefault();
+      if (btn) {
+        btn.disabled = true;
+        btn.classList.add('btn-loading');
+        btn.textContent = 'Проверяем';
+      }
+      if (ctaStatus) ctaStatus.textContent = 'Подтверждаем что ты не бот...';
+      var token = await waitForCfToken(8000);
+      if (!token) {
+        if (ctaStatus) {
+          ctaStatus.textContent = 'Антибот-проверка не успела. Попробуй ещё раз через секунду.';
+          ctaStatus.style.color = 'var(--warn,#f59f00)';
+        }
+        resetTurnstile();
+        if (btn) {
+          btn.disabled = false;
+          btn.classList.remove('btn-loading');
+          btn.textContent = origLabel;
+        }
+        return;
+      }
+      ensureTokenInput(form, token);
+      bypass.add(form);
+      form.submit();
+    });
+  });
+})();
 </script>
 {% endblock %}
