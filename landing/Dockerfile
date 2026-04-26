@@ -8,7 +8,8 @@ RUN pip install --no-cache-dir \
     jinja2==3.1.4 \
     aiohttp==3.10.11 \
     python-multipart==0.0.12 \
-    aiogram==3.14.0
+    aiogram==3.14.0 \
+    slowapi==0.1.9
 
 COPY db.py marzban.py robokassa.py config.py sub_tokens.py ./
 COPY landing/ ./landing/

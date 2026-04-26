@@ -12,6 +12,8 @@ from fastapi import FastAPI, Request, Form, HTTPException
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 import db
@@ -153,9 +155,66 @@ TRIAL_HOURS = int(os.environ.get("LANDING_TRIAL_HOURS", "3"))
 TRIAL_DATA_MB = int(os.environ.get("LANDING_TRIAL_MB", "500"))
 IP_SOFT_LIMIT_24H = int(os.environ.get("LANDING_IP_SOFT_LIMIT", "5"))
 
+def _rate_limit_key(request: Request) -> str:
+    """Ключ для rate-limit — IP юзера за nginx-прокси (X-Forwarded-For)."""
+    xff = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+    return xff or (request.client.host if request.client else "0.0.0.0")
+
+
+# slowapi limiter — лимиты задаются на endpoint'ах через @limiter.limit(...)
+limiter = Limiter(key_func=_rate_limit_key)
 app = FastAPI(title="RadarShield landing", docs_url=None, redoc_url=None)
+app.state.limiter = limiter
 app.mount("/static", StaticFiles(directory="landing/static"), name="static")
 templates = Jinja2Templates(directory="landing/templates")
+
+
+@app.exception_handler(RateLimitExceeded)
+async def _rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    """Превышен rate-limit → 429 с красивой страницей."""
+    raise HTTPException(status_code=429)
+
+
+_ALLOWED_METHODS = {"GET", "POST", "HEAD"}
+
+
+@app.middleware("http")
+async def _security_middleware(request: Request, call_next):
+    """1) Блокируем экзотические методы (PUT/DELETE/PATCH/OPTIONS/TRACE) на любых
+    путях — это либо мисконфиг, либо сканер уязвимостей. Возвращаем 405
+    через наш exception_handler — красивая страница вместо JSON.
+    2) На все ответы вешаем security headers.
+    """
+    if request.method not in _ALLOWED_METHODS:
+        response = await http_exception_handler(
+            request, StarletteHTTPException(status_code=405)
+        )
+    else:
+        response = await call_next(request)
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    # CSP — разрешаем self + Cloudflare Turnstile + FingerprintJS + Robokassa
+    # (только для платёжной кнопки), inline-стили (мы их активно используем)
+    # и inline-скрипты (наши формы).
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://openfpcdn.io; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com data:; "
+        "img-src 'self' data: blob:; "
+        "frame-src https://challenges.cloudflare.com; "
+        "connect-src 'self' https://challenges.cloudflare.com; "
+        "form-action 'self' https://auth.robokassa.ru; "
+        "frame-ancestors 'none'; "
+        "base-uri 'self'"
+    )
+    # Server: nginx/... добавляет nginx уже после нас — отключается через
+    # `server_tokens off;` в nginx.conf, не из приложения.
+    return response
+
 
 db.init_db()
 
@@ -249,6 +308,7 @@ async def trial_get_fallback(request: Request):
 
 
 @app.post("/trial")
+@limiter.limit("5/hour")
 async def create_trial(
     request: Request,
     device_id: str = Form(...),
@@ -559,6 +619,7 @@ async def install(request: Request, token: str):
 
 
 @app.get("/open/{mz_username}", response_class=HTMLResponse)
+@limiter.limit("10/minute")
 async def open_app(request: Request, mz_username: str):
     """Deep-link redirector для основной подписки.
 
@@ -566,6 +627,11 @@ async def open_app(request: Request, mz_username: str):
     `/sub/{token}` — она никогда не меняется. Для landing-leads (имя `lp_XXX`,
     нет tg_id) выдаём marzban-URL и кэшируем в БД, чтобы UI не «прыгал»
     при refresh'ах.
+
+    Anti-enumeration: при отсутствии mz_username не возвращаем 404 — рендерим
+    ту же install-страницу со ссылкой указывающей на наш /sub/<плейсхолдер>,
+    которая отдаст 410. Атакующий не различает существующего юзера от
+    отсутствующего по статус-коду /open/.
     """
     with db._conn() as c:
         row = c.execute(
@@ -573,6 +639,7 @@ async def open_app(request: Request, mz_username: str):
         ).fetchone()
     tg_id = row[0] if row else None
 
+    sub_url: str | None = None
     if tg_id:
         sub_url = f"https://radarshield.mooo.com/sub/{sub_tokens.make_sub_token(tg_id)}"
     else:
@@ -584,10 +651,14 @@ async def open_app(request: Request, mz_username: str):
             except Exception as e:
                 logger.error(f"open_app marzban fetch failed for {mz_username}: {e}")
                 user = None
-            if not user or not user.get("subscription_url"):
-                raise HTTPException(status_code=404, detail="Подписка не найдена. Возможно, она была удалена.")
-            sub_url = user["subscription_url"]
-            db.set_sub_url_by_mz(mz_username, sub_url)
+            if user and user.get("subscription_url"):
+                sub_url = user["subscription_url"]
+                db.set_sub_url_by_mz(mz_username, sub_url)
+
+    if not sub_url:
+        # Не палим существование mz_username — рендерим страницу с явно битой
+        # подпиской. Клиент-импортёр получит 410 и покажет ошибку.
+        sub_url = "https://radarshield.mooo.com/sub/expired"
 
     return templates.TemplateResponse("install.html", {
         "request": request,
@@ -599,24 +670,57 @@ async def open_app(request: Request, mz_username: str):
     })
 
 
+_HTTP_ERROR_PAGES = {
+    400: ("⚠️ Что-то не так с запросом", "Похоже, что-то в запросе не так. Открой главную и попробуй заново."),
+    403: ("🚫 Доступ закрыт", "Эта страница не для прямого открытия. Вернись на главную."),
+    404: ("🔎 Страница не найдена", "Ссылка устарела или такой страницы никогда не было."),
+    405: ("⚠️ Так этот запрос не работает", "Этот URL не открывается напрямую — попробуй с главной."),
+    410: ("🕒 Срок действия истёк", "Эта ссылка больше не активна."),
+    413: ("⚠️ Слишком большой запрос", "Запрос превысил лимит. Попробуй с меньшим объёмом."),
+    422: ("⚠️ Неверные данные", "Что-то не так с введёнными данными. Открой страницу заново."),
+    429: ("⏱ Слишком много запросов", "Подожди немного и попробуй снова — мы ограничиваем частоту запросов."),
+    500: ("💥 Что-то сломалось", "Произошла внутренняя ошибка. Уже ловим — попробуй чуть позже."),
+    502: ("🛠 Временно недоступно", "Один из сервисов сейчас недоступен. Попробуй через минуту."),
+    503: ("🛠 Сервис на обслуживании", "Скоро всё вернётся. Если срочно — напиши в поддержку."),
+}
+
+
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
-    """Все 404 (и прочие не-хендленные HTTPException без красивой HTML)
-    рендерятся через шаблон 404.html вместо сырого JSON."""
-    if exc.status_code == 404:
-        return templates.TemplateResponse(
-            "404.html",
-            {
-                **_page_context(request),
-                "heading": "🔎 Страница не найдена",
-                "message": str(exc.detail) if exc.detail and exc.detail != "Not Found"
-                          else "Ссылка устарела или такой страницы никогда не было.",
-            },
-            status_code=404,
-        )
-    # прочие ошибки — дефолтное поведение
-    from fastapi.responses import JSONResponse
-    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+    """Все HTTP-ошибки (4xx/5xx) рендерим в наш дизайн через 404.html (общий
+    шаблон). Юзер не увидит сырого JSON {"detail":"..."}, увидит брендированную
+    страницу с понятным месседжем."""
+    heading, default_msg = _HTTP_ERROR_PAGES.get(
+        exc.status_code,
+        (f"⚠️ Ошибка {exc.status_code}", "Что-то пошло не так. Вернись на главную и попробуй заново."),
+    )
+    detail_msg = (
+        str(exc.detail)
+        if exc.detail and not str(exc.detail).startswith(("Not Found", "Method Not Allowed"))
+        else default_msg
+    )
+    return templates.TemplateResponse(
+        "404.html",
+        {
+            **_page_context(request),
+            "heading": heading,
+            "message": detail_msg,
+        },
+        status_code=exc.status_code,
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Любая необработанная ошибка → 500 с красивой страницей (без stacktrace
+    наружу). В лог пишем полный traceback для разбора."""
+    logger.exception(f"unhandled error on {request.method} {request.url.path}: {exc}")
+    heading, msg = _HTTP_ERROR_PAGES[500]
+    return templates.TemplateResponse(
+        "404.html",
+        {**_page_context(request), "heading": heading, "message": msg},
+        status_code=500,
+    )
 
 
 def _verify_pay_sig(uid: str, sig: str) -> bool:
@@ -638,7 +742,15 @@ def _make_pay_sig(uid: str) -> str:
 _USERNAME_RE = re.compile(r"^@?([A-Za-z][A-Za-z0-9_]{3,31})$")
 
 
+@app.get("/api/user/lookup")
+async def user_lookup_get_fallback(request: Request):
+    """GET на API-endpoint — обычно опечатка/попытка сканера. Редирект на /pay
+    (форма поиска), вместо JSON 405."""
+    return RedirectResponse(url="/pay", status_code=303)
+
+
 @app.post("/api/user/lookup")
+@limiter.limit("5/minute")
 async def user_lookup(request: Request):
     """Поиск юзера по Telegram username для оплаты с лендинга без захода в бот.
     Возвращает uid+sig для редиректа на /pay, либо not_found с предложением
@@ -724,6 +836,7 @@ async def pay_page(request: Request, uid: str = "", sig: str = ""):
 
 
 @app.post("/api/robokassa/init")
+@limiter.limit("10/minute")
 async def robokassa_init_payment(request: Request):
     data = await request.json()
     uid = str(data.get("uid", ""))
