@@ -7,7 +7,7 @@
   <div class="hero-bg"></div>
   <div class="container" style="text-align:center;position:relative;z-index:2">
     <h1>💳 Оплата подписки</h1>
-    <p class="sub">Оплата картой — безопасно через Т&#8209;Банк. Подписка активируется автоматически.</p>
+    <p class="sub">Оплата картой — безопасно через Robokassa. Подписка активируется автоматически.</p>
   </div>
 </section>
 
@@ -27,8 +27,8 @@
   </div>
 
   <p class="tiny" style="text-align:center;max-width:600px;margin:24px auto 60px">
-    После нажатия откроется форма Т&#8209;Банка для ввода карты. Мы не храним данные карты —
-    транзакция обрабатывается на стороне банка (PCI DSS Level 1).
+    После нажатия откроется форма Robokassa для ввода карты. Мы не храним данные карты —
+    транзакция обрабатывается на стороне платёжного сервиса (PCI DSS).
   </p>
 </div>
 {% endblock %}
@@ -45,7 +45,7 @@
       btn.disabled = true;
       btn.textContent = 'Создаём счёт...';
       try {
-        var resp = await fetch('/api/tinkoff/init', {
+        var resp = await fetch('/api/robokassa/init', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({uid: uid, sig: sig, plan: plan}),

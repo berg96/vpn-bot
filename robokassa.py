@@ -12,7 +12,14 @@
   Success: SHA256(OutSum:InvId:Password1[:Shp_*])
 
 Shp_-параметры в подписи — отсортированы по имени, формат "Shp_key=value".
-Receipt в подписи — URL-encoded JSON (точно та строка, что пошла в URL).
+Receipt в подписи — сырой JSON (минимизированный, без URL-кодирования).
+В URL Receipt уходит rawurlencoded — query собираем вручную, чтобы urlencode
+не закодировал его второй раз.
+
+Опытным путём (тесты на radarshield в IsTest=1, апрель 2026): варианты с
+URL-encoded Receipt в подписи давали Error 29, raw JSON — проходил.
+Официальный PHP-пример Robokassa с `$receipt = "%7B..."` оказался ошибочным
+для SHA256-режима либо устарел.
 """
 import hashlib
 import json
@@ -87,27 +94,32 @@ def make_payment_url(
     receipt_encoded = urllib.parse.quote(receipt_json, safe="")
 
     sig_str = (
-        f"{MERCHANT_LOGIN}:{out_sum}:{inv_id}:{receipt_encoded}:{PASSWORD_1}"
+        f"{MERCHANT_LOGIN}:{out_sum}:{inv_id}:{receipt_json}:{PASSWORD_1}"
         + _shp_suffix(shp)
     )
     signature = _sha256(sig_str)
 
-    params = {
-        "MerchantLogin": MERCHANT_LOGIN,
-        "OutSum": out_sum,
-        "InvId": str(inv_id),
-        "Description": description[:100],
-        "Receipt": receipt_encoded,
-        "SignatureValue": signature,
-        "Email": customer_email,
-        "Culture": "ru",
-        "Encoding": "utf-8",
-    }
+    params = [
+        ("MerchantLogin", MERCHANT_LOGIN),
+        ("OutSum", out_sum),
+        ("InvId", str(inv_id)),
+        ("Description", description[:100]),
+        ("SignatureValue", signature),
+        ("Email", customer_email),
+        ("Culture", "ru"),
+        ("Encoding", "utf-8"),
+    ]
     if TEST_MODE:
-        params["IsTest"] = "1"
+        params.append(("IsTest", "1"))
     for k, v in sorted(shp.items()):
-        params[k] = v
-    return PAYMENT_URL + "?" + urllib.parse.urlencode(params)
+        params.append((k, v))
+
+    qs_parts = [
+        f"{urllib.parse.quote(k, safe='')}={urllib.parse.quote(v, safe='')}"
+        for k, v in params
+    ]
+    qs_parts.append(f"Receipt={receipt_encoded}")
+    return PAYMENT_URL + "?" + "&".join(qs_parts)
 
 
 def verify_result(out_sum: str, inv_id: str, signature: str, shp: dict[str, str]) -> bool:
