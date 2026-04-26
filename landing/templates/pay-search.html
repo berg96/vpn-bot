@@ -25,6 +25,9 @@
     {% if turnstile_site_key %}
     <div class="cf-turnstile" data-sitekey="{{ turnstile_site_key }}" data-theme="dark"
          data-appearance="interaction-only"
+         data-callback="onTurnstileToken"
+         data-error-callback="onTurnstileError"
+         data-expired-callback="onTurnstileExpired"
          style="margin-top:16px;display:flex;justify-content:center"></div>
     {% endif %}
     <button id="lookup-btn" class="btn btn-primary btn-lg" style="width:100%;margin-top:16px;justify-content:center">
@@ -44,10 +47,44 @@
 
 {% block body_end %}
 <script>
+// Глобальные callbacks для Turnstile-виджета (interaction-only режим).
+// Виджет вызывает onTurnstileToken когда токен готов (passive verify прошла
+// или юзер прошёл challenge). Храним токен и резолвим ожидающие промисы.
+window.__cfToken = '';
+window.__cfWaiters = [];
+function onTurnstileToken(token) {
+  window.__cfToken = token || '';
+  var waiters = window.__cfWaiters;
+  window.__cfWaiters = [];
+  waiters.forEach(function(r) { r(window.__cfToken); });
+}
+function onTurnstileExpired() { window.__cfToken = ''; }
+function onTurnstileError() { window.__cfToken = ''; }
+
+function waitForCfToken(timeoutMs) {
+  if (window.__cfToken) return Promise.resolve(window.__cfToken);
+  return new Promise(function(resolve) {
+    var done = false;
+    var t = setTimeout(function() {
+      if (done) return;
+      done = true;
+      resolve('');
+    }, timeoutMs || 8000);
+    window.__cfWaiters.push(function(tok) {
+      if (done) return;
+      done = true;
+      clearTimeout(t);
+      resolve(tok);
+    });
+  });
+}
+</script>
+<script>
 (function() {
   var input = document.getElementById('tg-username');
   var btn = document.getElementById('lookup-btn');
   var status = document.getElementById('lookup-status');
+  var hasCaptcha = {{ 'true' if turnstile_site_key else 'false' }};
 
   function setStatus(text, color) {
     status.textContent = text;
@@ -67,11 +104,19 @@
     setStatus('');
 
     var cfToken = '';
-    if (window.turnstile) {
-      try { cfToken = window.turnstile.getResponse() || ''; } catch (_) {}
+    if (hasCaptcha) {
+      cfToken = await waitForCfToken(8000);
+      if (!cfToken) {
+        setStatus('Антибот-проверка не успела. Попробуй ещё раз через секунду.', 'var(--warn,#f59f00)');
+        if (window.turnstile) try { window.turnstile.reset(); } catch (_) {}
+        btn.disabled = false;
+        btn.textContent = origLabel;
+        return;
+      }
     }
 
     function resetCaptcha() {
+      window.__cfToken = '';
       if (window.turnstile) try { window.turnstile.reset(); } catch (_) {}
     }
 
