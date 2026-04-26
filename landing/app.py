@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import hmac
 import logging
 import os
 import re
@@ -618,46 +619,26 @@ async def install(request: Request, token: str):
     })
 
 
-@app.get("/open/{mz_username}", response_class=HTMLResponse)
+@app.get("/open/{token}", response_class=HTMLResponse)
 @limiter.limit("10/minute")
-async def open_app(request: Request, mz_username: str):
+async def open_app(request: Request, token: str):
     """Deep-link redirector для основной подписки.
 
-    Для tg-юзеров (есть в users.mz_username) выдаём стабильную HMAC-ссылку
-    `/sub/{token}` — она никогда не меняется. Для landing-leads (имя `lp_XXX`,
-    нет tg_id) выдаём marzban-URL и кэшируем в БД, чтобы UI не «прыгал»
-    при refresh'ах.
+    Принимает HMAC-токен (тот же sub_token что в /sub/{token}). Раньше путь
+    был /open/{mz_username} — атакующий мог перебирать словарём публичные
+    Telegram-логины. Теперь URL содержит токен с подписью SHA256, без
+    секрета не подобрать.
 
-    Anti-enumeration: при отсутствии mz_username не возвращаем 404 — рендерим
-    ту же install-страницу со ссылкой указывающей на наш /sub/<плейсхолдер>,
-    которая отдаст 410. Атакующий не различает существующего юзера от
-    отсутствующего по статус-коду /open/.
+    Anti-enumeration: при невалидном токене рендерим ту же install-страницу
+    с заведомо битой sub_url. Атакующий не различает «существует» от
+    «не существует» по статус-коду или содержимому ответа.
     """
-    with db._conn() as c:
-        row = c.execute(
-            "SELECT tg_id FROM users WHERE mz_username=?", (mz_username,)
-        ).fetchone()
-    tg_id = row[0] if row else None
-
+    tg_id = sub_tokens.parse_sub_token(token)
     sub_url: str | None = None
-    if tg_id:
-        sub_url = f"https://radarshield.mooo.com/sub/{sub_tokens.make_sub_token(tg_id)}"
-    else:
-        sub_url = db.get_sub_url_by_mz(mz_username)
-        if not sub_url:
-            try:
-                async with aiohttp.ClientSession() as s:
-                    user = await marzban.get_user(s, 0, mz_username=mz_username)
-            except Exception as e:
-                logger.error(f"open_app marzban fetch failed for {mz_username}: {e}")
-                user = None
-            if user and user.get("subscription_url"):
-                sub_url = user["subscription_url"]
-                db.set_sub_url_by_mz(mz_username, sub_url)
+    if tg_id is not None and db.get_mz_username(tg_id):
+        sub_url = f"https://radarshield.mooo.com/sub/{token}"
 
     if not sub_url:
-        # Не палим существование mz_username — рендерим страницу с явно битой
-        # подпиской. Клиент-импортёр получит 410 и покажет ошибку.
         sub_url = "https://radarshield.mooo.com/sub/expired"
 
     return templates.TemplateResponse("install.html", {
@@ -1002,7 +983,7 @@ async def _send_activation_notice(
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="👤 Профиль", callback_data="profile")],
                 [InlineKeyboardButton(text="📲 Открыть в приложении",
-                                      url=f"https://radarshield.mooo.com/open/{mz_username}")],
+                                      url=f"https://radarshield.mooo.com/open/{sub_tokens.make_sub_token(tg_id)}")],
             ]),
         )
         if int(os.environ.get("ADMIN_TG_ID", 0)):
@@ -1112,6 +1093,12 @@ async def sitemap_xml():
     return FileResponse("landing/static/sitemap.xml", media_type="application/xml")
 
 
-@app.get("/healthz")
-async def healthz():
+@app.get("/_h/{secret}", include_in_schema=False)
+async def healthz(secret: str):
+    """Health-check за секретом — иначе боты спамят его, чтобы fingerprint'ить
+    сервис. Старый /healthz убран. Для мониторинга используем
+    HEALTH_CHECK_SECRET из .env."""
+    expected = os.environ.get("HEALTH_CHECK_SECRET", "")
+    if not expected or not hmac.compare_digest(secret, expected):
+        raise HTTPException(status_code=404)
     return {"ok": True}

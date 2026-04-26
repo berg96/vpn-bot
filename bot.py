@@ -54,9 +54,11 @@ def _stable_sub_url(tg_id: int) -> str:
     return f"{LANDING_BASE_URL}/sub/{sub_tokens.make_sub_token(tg_id)}"
 
 
-def _install_url(mz_name: str) -> str:
-    """URL для кнопки 'Открыть в приложении' в боте — тот же deep-link flow что на сайте."""
-    return f"{LANDING_BASE_URL}/open/{mz_name}"
+def _install_url(tg_id: int) -> str:
+    """URL для кнопки 'Открыть в приложении' — HMAC-токен, чтобы нельзя было
+    подобрать перебором (раньше URL содержал mz_username открытым текстом)."""
+    import sub_tokens
+    return f"{LANDING_BASE_URL}/open/{sub_tokens.make_sub_token(tg_id)}"
 
 
 def _bonus_applied_text(expire_str: str, sub_url: str) -> str:
@@ -72,10 +74,10 @@ def _bonus_applied_text(expire_str: str, sub_url: str) -> str:
     )
 
 
-def _bonus_applied_keyboard(current_mz: str) -> "InlineKeyboardMarkup":
+def _bonus_applied_keyboard(tg_id: int) -> "InlineKeyboardMarkup":
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="👤 Профиль", callback_data="profile")],
-        [InlineKeyboardButton(text="📲 Открыть в приложении", url=_install_url(current_mz))],
+        [InlineKeyboardButton(text="📲 Открыть в приложении", url=_install_url(tg_id))],
         [InlineKeyboardButton(text="📖 Установка", callback_data="apps_menu")],
         [InlineKeyboardButton(text="💬 Поддержка", url=config.SUPPORT_LINK)],
     ])
@@ -253,7 +255,7 @@ async def _do_start(tg_id: int, username: str | None, first_name: str | None, an
                 parse_mode=ParseMode.HTML,
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(text="👤 Профиль", callback_data="profile")],
-                    [InlineKeyboardButton(text="📲 Открыть в приложении", url=_install_url(mz_name))],
+                    [InlineKeyboardButton(text="📲 Открыть в приложении", url=_install_url(tg_id))],
                     [InlineKeyboardButton(text="📖 Установка", callback_data="apps_menu")],
                     [InlineKeyboardButton(text="💬 Поддержка", url=config.SUPPORT_LINK)],
                 ]),
@@ -392,7 +394,7 @@ async def _handle_landing_deeplink(msg: Message, token: str) -> None:
             await msg.answer(
                 _bonus_applied_text(expire_str, sub_url),
                 parse_mode=ParseMode.HTML,
-                reply_markup=_bonus_applied_keyboard(current_mz),
+                reply_markup=_bonus_applied_keyboard(tg_id),
             )
 
         except Exception as e:
@@ -440,7 +442,7 @@ async def _handle_landing_deeplink(msg: Message, token: str) -> None:
             parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="👤 Профиль", callback_data="profile")],
-                [InlineKeyboardButton(text="📲 Открыть в приложении", url=_install_url(lead["mz_username"]))],
+                [InlineKeyboardButton(text="📲 Открыть в приложении", url=_install_url(tg_id))],
                 [InlineKeyboardButton(text="📖 Установка", callback_data="apps_menu")],
                 [InlineKeyboardButton(text="💬 Поддержка", url=config.SUPPORT_LINK)],
             ]),
@@ -527,7 +529,7 @@ async def cb_lp_merge(call: CallbackQuery):
     await call.message.edit_text(
         _bonus_applied_text(expire_str, sub_url),
         parse_mode=ParseMode.HTML,
-        reply_markup=_bonus_applied_keyboard(current_mz),
+        reply_markup=_bonus_applied_keyboard(tg_id),
     )
     await call.answer("+1 день 🎁")
 
@@ -601,7 +603,7 @@ async def cmd_profile(event: Message | CallbackQuery):
         )
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔄 Продлить", callback_data="back_to_plans")],
-            [InlineKeyboardButton(text="📲 Открыть в приложении", url=_install_url(mz_name))],
+            [InlineKeyboardButton(text="📲 Открыть в приложении", url=_install_url(tg_id))],
             [InlineKeyboardButton(text="📖 Установка", callback_data="apps_menu")],
             [InlineKeyboardButton(text="💬 Поддержка", url=config.SUPPORT_LINK)],
         ])
@@ -781,7 +783,7 @@ async def successful_payment(msg: Message):
             parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="👤 Профиль", callback_data="profile")],
-                [InlineKeyboardButton(text="📲 Открыть в приложении", url=_install_url(mz_name))],
+                [InlineKeyboardButton(text="📲 Открыть в приложении", url=_install_url(tg_id))],
                 [InlineKeyboardButton(text="📖 Установка", callback_data="apps_menu")],
                 [InlineKeyboardButton(text="💬 Поддержка", url=config.SUPPORT_LINK)],
             ]),
@@ -1094,7 +1096,7 @@ async def _check_expire_reminders(session: aiohttp.ClientSession) -> int:
 async def _send_expire_reminder(tg_id: int, hours_left: float, label: str) -> None:
     mz_name = db.get_mz_username(tg_id)
     install_btn = (
-        [InlineKeyboardButton(text="📲 Открыть в приложении", url=_install_url(mz_name))]
+        [InlineKeyboardButton(text="📲 Открыть в приложении", url=_install_url(tg_id))]
         if mz_name else []
     )
     kb = InlineKeyboardMarkup(inline_keyboard=[
