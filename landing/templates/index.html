@@ -237,6 +237,7 @@
           <input type="hidden" name="fingerprint" class="fingerprint">
           {% if turnstile_site_key %}
           <div class="cf-turnstile" data-sitekey="{{ turnstile_site_key }}" data-theme="dark"
+               data-appearance="interaction-only"
                style="margin-bottom:12px;display:flex;justify-content:center"></div>
           {% endif %}
           <button type="submit" class="btn btn-primary btn-lg" style="width:100%;justify-content:center">
