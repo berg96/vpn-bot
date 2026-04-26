@@ -22,6 +22,10 @@
              spellcheck="false" inputmode="text" placeholder="имя_пользователя"
              style="width:100%;padding:14px 14px 14px 30px;background:var(--bg);border:1px solid var(--line-2);border-radius:12px;color:var(--ink);font-size:16px;font-family:inherit;box-sizing:border-box;outline:none">
     </div>
+    {% if turnstile_site_key %}
+    <div class="cf-turnstile" data-sitekey="{{ turnstile_site_key }}" data-theme="dark"
+         style="margin-top:16px;display:flex;justify-content:center"></div>
+    {% endif %}
     <button id="lookup-btn" class="btn btn-primary btn-lg" style="width:100%;margin-top:16px;justify-content:center">
       Найти и оплатить
     </button>
@@ -61,13 +65,23 @@
     btn.textContent = 'Ищем...';
     setStatus('');
 
+    var cfToken = '';
+    if (window.turnstile) {
+      try { cfToken = window.turnstile.getResponse() || ''; } catch (_) {}
+    }
+
     try {
       var resp = await fetch('/api/user/lookup', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({username: raw}),
+        body: JSON.stringify({username: raw, cf_token: cfToken}),
       });
       var data = await resp.json();
+      if (data.error === 'captcha_failed') {
+        setStatus('Не удалось подтвердить, что ты не бот. Обнови страницу и попробуй снова.', 'var(--err,#eb001b)');
+        if (window.turnstile) try { window.turnstile.reset(); } catch (_) {}
+        return;
+      }
       if (data.ok && data.redirect_url) {
         setStatus('Нашли @' + data.username + '. Открываем форму оплаты...', 'var(--ok,#34c759)');
         window.location.href = data.redirect_url;

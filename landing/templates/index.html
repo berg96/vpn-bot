@@ -235,6 +235,10 @@
         <form method="post" action="/trial">
           <input type="hidden" name="device_id" class="device_id">
           <input type="hidden" name="fingerprint" class="fingerprint">
+          {% if turnstile_site_key %}
+          <div class="cf-turnstile" data-sitekey="{{ turnstile_site_key }}" data-theme="dark"
+               style="margin-bottom:12px;display:flex;justify-content:center"></div>
+          {% endif %}
           <button type="submit" class="btn btn-primary btn-lg" style="width:100%;justify-content:center">
             Попробовать {{ trial_hours }} часа бесплатно
           </button>

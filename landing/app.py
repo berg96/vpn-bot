@@ -39,6 +39,34 @@ ALERT_TOPIC_ID = int(os.environ.get("ALERT_TOPIC_ID", 33))
 # чтобы /pay сразу показывал «недоступно» без обращения к API эквайринга.
 CARD_PAYMENT_ENABLED = os.environ.get("CARD_PAYMENT_ENABLED", "1") == "1"
 
+# Cloudflare Turnstile (антибот-капча). Если ключи не заданы — капча отключена
+# (полезно для локальной разработки и тестов).
+TURNSTILE_SITE_KEY = os.environ.get("TURNSTILE_SITE_KEY", "")
+TURNSTILE_SECRET_KEY = os.environ.get("TURNSTILE_SECRET_KEY", "")
+TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+
+
+async def _verify_turnstile(token: str, remote_ip: str | None = None) -> bool:
+    """Проверка Cloudflare Turnstile-токена. При отсутствии TURNSTILE_SECRET_KEY
+    в окружении возвращает True (капча отключена). Сетевые ошибки fail-open
+    (return True) — иначе DDoS на CF положит наш сайт."""
+    if not TURNSTILE_SECRET_KEY:
+        return True
+    if not token:
+        return False
+    data = {"secret": TURNSTILE_SECRET_KEY, "response": token}
+    if remote_ip:
+        data["remoteip"] = remote_ip
+    try:
+        async with aiohttp.ClientSession() as s:
+            async with s.post(TURNSTILE_VERIFY_URL, data=data,
+                              timeout=aiohttp.ClientTimeout(total=5)) as r:
+                payload = await r.json()
+                return bool(payload.get("success"))
+    except Exception as e:
+        logger.warning(f"turnstile verify failed (fail-open): {e}")
+        return True
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -66,6 +94,7 @@ def _page_context(request):
         "support_email": SUPPORT_EMAIL,
         "support_phone": SUPPORT_PHONE,
         "updated_at": DOCS_UPDATED_AT,
+        "turnstile_site_key": TURNSTILE_SITE_KEY,
     }
 
 
@@ -217,12 +246,25 @@ async def create_trial(
     request: Request,
     device_id: str = Form(...),
     fingerprint: str = Form(""),
+    cf_turnstile_response: str = Form("", alias="cf-turnstile-response"),
 ):
     existing_token = request.cookies.get("lp_token")
     if existing_token:
         lead = db.get_landing_lead(existing_token)
         if lead and _is_lead_active(lead):
             return RedirectResponse(url=f"/s/{existing_token}", status_code=303)
+
+    if not await _verify_turnstile(cf_turnstile_response, _client_ip(request)):
+        return templates.TemplateResponse(
+            "already-tried.html",
+            {
+                "request": request,
+                "message": "Не удалось подтвердить, что ты не бот. Обнови страницу и попробуй снова.",
+                "bot_username": BOT_USERNAME,
+                "support_username": SUPPORT_USERNAME,
+            },
+            status_code=403,
+        )
 
     client_fp = _client_fp(request)
 
@@ -598,6 +640,8 @@ async def user_lookup(request: Request):
         data = await request.json()
     except Exception:
         return {"error": "bad_request"}
+    if not await _verify_turnstile(str(data.get("cf_token", "")), _client_ip(request)):
+        return {"error": "captcha_failed"}
     raw = str(data.get("username", "")).strip()
     if not raw:
         return {"error": "empty"}
