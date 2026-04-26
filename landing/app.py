@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import logging
 import os
+import re
 import secrets
 import time
 from datetime import datetime, timezone, timedelta
@@ -564,22 +565,57 @@ def _verify_pay_sig(uid: str, sig: str) -> bool:
     return hmac.compare_digest(sig, expected)
 
 
+def _make_pay_sig(uid: str) -> str:
+    import hmac, hashlib
+    secret = os.environ.get("PAY_LINK_SECRET", os.environ.get("BOT_TOKEN", "")[:32])
+    return hmac.new(secret.encode(), str(uid).encode(), hashlib.sha256).hexdigest()[:16]
+
+
+# Telegram username: 5–32 символа, латиница/цифры/_, не начинается с цифры.
+# Ставим длину 4–32 — уловить «ника нет» от случайных юзеров проще, не за счёт
+# уважения тех, кто всё-таки набил коротко.
+_USERNAME_RE = re.compile(r"^@?([A-Za-z][A-Za-z0-9_]{3,31})$")
+
+
+@app.post("/api/user/lookup")
+async def user_lookup(request: Request):
+    """Поиск юзера по Telegram username для оплаты с лендинга без захода в бот.
+    Возвращает uid+sig для редиректа на /pay, либо not_found с предложением
+    взять пробный доступ через бота."""
+    try:
+        data = await request.json()
+    except Exception:
+        return {"error": "bad_request"}
+    raw = str(data.get("username", "")).strip()
+    if not raw:
+        return {"error": "empty"}
+    m = _USERNAME_RE.match(raw)
+    if not m:
+        return {"error": "invalid_format"}
+    username = m.group(1)
+    user = db.find_user_by_username(username)
+    if not user:
+        return {
+            "error": "not_found",
+            "username": username,
+            "bot_username": BOT_USERNAME,
+        }
+    uid = str(user["tg_id"])
+    return {
+        "ok": True,
+        "username": user["username"],
+        "redirect_url": f"/pay?uid={uid}&sig={_make_pay_sig(uid)}",
+    }
+
+
 @app.get("/pay", response_class=HTMLResponse)
 async def pay_page(request: Request, uid: str = "", sig: str = ""):
     if not uid or not sig or not _verify_pay_sig(uid, sig):
-        return templates.TemplateResponse(
-            "pay-result.html",
-            {
-                **_page_context(request),
-                "title": "Оплата подписки",
-                "heading": "💳 Оплата через бота",
-                "message": "Оплата подписки доступна только по персональной ссылке, которую выдаёт Telegram-бот. Открой @"
-                           + BOT_USERNAME + " и нажми «Оплатить» — будет выдана новая ссылка с актуальным тарифом.",
-                "success": False,
-                "btn_target": "bot",
-            },
-            status_code=200,
-        )
+        # Без персональной ссылки — показываем форму поиска по @username.
+        return templates.TemplateResponse("pay-search.html", {
+            **_page_context(request),
+            "title": "Оплата подписки",
+        })
 
     if not CARD_PAYMENT_ENABLED or not await _acquiring_healthy():
         return templates.TemplateResponse(
@@ -608,11 +644,16 @@ async def pay_page(request: Request, uid: str = "", sig: str = ""):
             "per_month": int(per_month) if days != 30 else None,
             "discount": int((1 - per_month / 250) * 100) if days != 30 else None,
         }
+    try:
+        username = db.get_username_by_tg_id(int(uid))
+    except (ValueError, TypeError):
+        username = None
     return templates.TemplateResponse("pay.html", {
         **_page_context(request),
         "uid": uid,
         "sig": sig,
         "plans": plans_display,
+        "username": username,
     })
 
 

@@ -144,6 +144,27 @@ def get_mz_username(tg_id: int) -> str | None:
         return row[0] if row else None
 
 
+def find_user_by_username(username: str) -> dict | None:
+    """Поиск юзера по Telegram username (case-insensitive, без @).
+    Используется на лендинге для оплаты без захода в бота."""
+    if not username:
+        return None
+    with _conn() as c:
+        row = c.execute(
+            "SELECT tg_id, username FROM users WHERE LOWER(username)=LOWER(?)",
+            (username.lstrip("@"),),
+        ).fetchone()
+    return {"tg_id": row[0], "username": row[1]} if row else None
+
+
+def get_username_by_tg_id(tg_id: int) -> str | None:
+    with _conn() as c:
+        row = c.execute(
+            "SELECT username FROM users WHERE tg_id=?", (tg_id,)
+        ).fetchone()
+        return row[0] if row else None
+
+
 def set_mz_username(tg_id: int, mz_username: str):
     with _conn() as c:
         c.execute(

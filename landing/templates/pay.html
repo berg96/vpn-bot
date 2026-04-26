@@ -7,6 +7,9 @@
   <div class="hero-bg"></div>
   <div class="container" style="text-align:center;position:relative;z-index:2">
     <h1>💳 Оплата подписки</h1>
+    {% if username %}
+    <p style="color:var(--ink-dim);margin-top:12px;font-size:15px">Аккаунт: <b style="color:var(--accent)">@{{ username }}</b></p>
+    {% endif %}
     <p class="sub">Оплата картой — безопасно через Robokassa. Подписка активируется автоматически.</p>
   </div>
 </section>

@@ -1,0 +1,104 @@
+{% extends "_base.html" %}
+{% block title %}Оплата подписки — RadarShield{% endblock %}
+{% block meta %}<meta name="description" content="Оплата подписки RadarShield по Telegram-логину">{% endblock %}
+
+{% block body %}
+<section class="hero compact">
+  <div class="hero-bg"></div>
+  <div class="container" style="text-align:center;position:relative;z-index:2">
+    <h1>💳 Оплата подписки</h1>
+    <p class="sub">Введи свой Telegram-логин — найдём тебя и откроем форму оплаты.</p>
+  </div>
+</section>
+
+<div class="container" style="max-width:480px;padding-bottom:80px">
+  <div style="background:var(--panel);border:1px solid var(--line-2);border-radius:18px;padding:28px 24px;margin-top:32px">
+    <label for="tg-username" style="display:block;font-size:14px;color:var(--ink-dim);margin-bottom:10px">
+      Telegram-логин
+    </label>
+    <div style="position:relative">
+      <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--ink-mute);font-weight:600">@</span>
+      <input id="tg-username" type="text" autocomplete="off" autocapitalize="off"
+             spellcheck="false" inputmode="text" placeholder="имя_пользователя"
+             style="width:100%;padding:14px 14px 14px 30px;background:var(--bg);border:1px solid var(--line-2);border-radius:12px;color:var(--ink);font-size:16px;font-family:inherit;box-sizing:border-box;outline:none">
+    </div>
+    <button id="lookup-btn" class="btn btn-primary btn-lg" style="width:100%;margin-top:16px;justify-content:center">
+      Найти и оплатить
+    </button>
+    <p id="lookup-status" style="min-height:20px;margin:14px 0 0;color:var(--ink-mute);font-size:13.5px;line-height:1.5"></p>
+  </div>
+
+  <p style="text-align:center;color:var(--ink-mute);font-size:13.5px;margin-top:24px">
+    Ещё не пользовался RadarShield?
+    <a href="https://t.me/{{ bot_username }}" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600">
+      Получи 7 дней бесплатно в боте →
+    </a>
+  </p>
+</div>
+{% endblock %}
+
+{% block body_end %}
+<script>
+(function() {
+  var input = document.getElementById('tg-username');
+  var btn = document.getElementById('lookup-btn');
+  var status = document.getElementById('lookup-status');
+
+  function setStatus(text, color) {
+    status.textContent = text;
+    status.style.color = color || 'var(--ink-mute)';
+  }
+
+  async function lookup() {
+    var raw = input.value.trim();
+    if (!raw) {
+      setStatus('Введи логин — без него не найдём.', 'var(--warn,#f59f00)');
+      input.focus();
+      return;
+    }
+    btn.disabled = true;
+    var origLabel = btn.textContent;
+    btn.textContent = 'Ищем...';
+    setStatus('');
+
+    try {
+      var resp = await fetch('/api/user/lookup', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({username: raw}),
+      });
+      var data = await resp.json();
+      if (data.ok && data.redirect_url) {
+        setStatus('Нашли @' + data.username + '. Открываем форму оплаты...', 'var(--ok,#34c759)');
+        window.location.href = data.redirect_url;
+        return;
+      }
+      if (data.error === 'invalid_format') {
+        setStatus('Логин может содержать только латиницу, цифры и подчёркивания, длина 4–32.', 'var(--warn,#f59f00)');
+      } else if (data.error === 'not_found') {
+        status.innerHTML = 'Не нашли <b>@' + (data.username || raw.replace(/^@/, '')) + '</b>. ' +
+          'Проверь правильность или открой ' +
+          '<a href="https://t.me/' + data.bot_username + '" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600">@' + data.bot_username + '</a> ' +
+          '— активируем 7 дней бесплатно.';
+        status.style.color = 'var(--ink-dim)';
+      } else if (data.error === 'empty') {
+        setStatus('Введи логин.', 'var(--warn,#f59f00)');
+      } else {
+        setStatus('Что-то пошло не так. Попробуй ещё раз.', 'var(--err,#eb001b)');
+      }
+    } catch (e) {
+      setStatus('Ошибка сети. Проверь интернет и попробуй снова.', 'var(--err,#eb001b)');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = origLabel;
+    }
+  }
+
+  btn.addEventListener('click', lookup);
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') lookup();
+  });
+  input.focus();
+})();
+</script>
+{% endblock %}
