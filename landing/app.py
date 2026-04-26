@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import logging
 import os
@@ -15,7 +16,6 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 import db
 import marzban
 import robokassa
-import tinkoff
 import sub_tokens
 
 # Отдельный TG-client для уведомлений юзера после успешной RUB-оплаты.
@@ -128,6 +128,28 @@ app.mount("/static", StaticFiles(directory="landing/static"), name="static")
 templates = Jinja2Templates(directory="landing/templates")
 
 db.init_db()
+
+
+@app.on_event("startup")
+async def _resume_unactivated_payments():
+    """Догоняем активации, не успевшие пройти до рестарта контейнера.
+    Webhook от Robokassa мог отметить confirmed, но Marzban был недоступен —
+    активация осталась в фоне и умерла вместе со старым процессом."""
+    import config as _cfg
+    pending = db.get_unactivated_robokassa_payments()
+    if not pending:
+        return
+    logger.info(f"resuming {len(pending)} unactivated robokassa payments")
+    for p in pending:
+        plan = _cfg.PLANS.get(p["plan_key"])
+        if not plan:
+            logger.error(f"resume: unknown plan {p['plan_key']} for inv_id={p['inv_id']}")
+            continue
+        _name, days, _stars, _stars_str, _rub_kopeks, rub_str = plan
+        asyncio.create_task(
+            _activate_with_retry(p["inv_id"], p["tg_id"], p["plan_key"], days, rub_str)
+        )
+
 
 APP_DOWNLOADS = {
     "flclash_android": "https://github.com/chen08209/FlClash/releases/download/v0.8.92/FlClash-0.8.92-android-arm64-v8a.apk",
@@ -554,6 +576,7 @@ async def pay_page(request: Request, uid: str = "", sig: str = ""):
                 "message": "Оплата подписки доступна только по персональной ссылке, которую выдаёт Telegram-бот. Открой @"
                            + BOT_USERNAME + " и нажми «Оплатить» — будет выдана новая ссылка с актуальным тарифом.",
                 "success": False,
+                "btn_target": "bot",
             },
             status_code=200,
         )
@@ -591,157 +614,6 @@ async def pay_page(request: Request, uid: str = "", sig: str = ""):
         "sig": sig,
         "plans": plans_display,
     })
-
-
-@app.post("/api/tinkoff/init")
-async def tinkoff_init_payment(request: Request):
-    data = await request.json()
-    uid = str(data.get("uid", ""))
-    sig = data.get("sig", "")
-    plan_key = data.get("plan", "")
-
-    if not uid or not sig or not _verify_pay_sig(uid, sig):
-        return {"error": "Ссылка недействительна"}
-
-    import config as _cfg
-    plan = _cfg.PLANS.get(plan_key)
-    if not plan:
-        return {"error": "Неизвестный тариф"}
-    name, days, stars, stars_str, rub_kopeks, rub_str = plan
-
-    tg_id = int(uid)
-    order_id = f"rs-{tg_id}-{plan_key}-{int(datetime.now(timezone.utc).timestamp())}"
-
-    try:
-        async with aiohttp.ClientSession() as s:
-            result = await tinkoff.init_payment(
-                s,
-                amount_kopeks=rub_kopeks,
-                order_id=order_id,
-                description=f"{tinkoff.RECEIPT_ITEM_NAME_PREFIX}, {name}",
-                customer_key=uid,
-            )
-    except Exception as e:
-        logger.error(f"tinkoff init failed from /pay: {e}")
-        return {"error": "Не удалось создать счёт, попробуй ещё раз"}
-
-    db.record_tinkoff_pending(
-        order_id=order_id, tg_id=tg_id, plan_key=plan_key,
-        amount_kopeks=rub_kopeks, payment_id=str(result.get("PaymentId", "")),
-    )
-    db.log_event(tg_id, "pay_initiated",
-                 {"plan": plan_key, "amount_rub": rub_kopeks / 100, "provider": "tinkoff"})
-
-    return {"payment_url": result.get("PaymentURL"), "order_id": order_id}
-
-
-@app.post("/api/tinkoff/notification")
-async def tinkoff_notification(request: Request):
-    """Webhook от Т-Банка. Приходит при каждом изменении статуса платежа.
-
-    Делаем:
-      1. Верифицируем Token (защита от подделки).
-      2. Смотрим OrderId в БД — наш ли это платёж.
-      3. Если Status=CONFIRMED и ещё не обработан — активируем подписку в Marzban,
-         шлём юзеру уведомление в TG.
-      4. Возвращаем "OK" — Т-Банк ждёт именно эту строку, иначе будет ретраить.
-    """
-    try:
-        payload = await request.json()
-    except Exception:
-        logger.error("tinkoff notification: invalid JSON")
-        return "OK"
-
-    logger.info(f"tinkoff notification: {payload}")
-
-    if not tinkoff.verify_notification(payload):
-        logger.error(f"tinkoff notification: bad token, payload={payload}")
-        return "OK"  # Всё равно OK — иначе Т-Банк зациклится в ретраях
-
-    order_id = payload.get("OrderId")
-    status = payload.get("Status", "")
-    if not order_id:
-        return "OK"
-
-    payment = db.get_tinkoff_payment(order_id)
-    if not payment:
-        logger.warning(f"tinkoff notification: unknown order_id={order_id}")
-        return "OK"
-
-    if status == "CONFIRMED":
-        # Атомарно пытаемся пометить как confirmed — если уже было, выходим (идемпотентность).
-        if not db.mark_tinkoff_confirmed(order_id):
-            return "OK"
-
-        tg_id = payment["tg_id"]
-        plan_key = payment["plan_key"]
-
-        import config
-        plan = config.PLANS.get(plan_key)
-        if not plan:
-            logger.error(f"tinkoff confirm: unknown plan {plan_key}")
-            return "OK"
-        name, days, stars, stars_str, rub_kopeks, rub_str = plan
-
-        # Активируем подписку — та же логика что в bot.successful_payment
-        db.record_payment(tg_id=tg_id, plan_key=plan_key,
-                          stars=rub_kopeks, charge_id=str(payload.get("PaymentId", "")))
-        db.delete_reminder_events(tg_id)  # продлили → reset напоминаний
-        db.log_event(tg_id, "pay_success",
-                     {"plan": plan_key, "amount_rub": rub_kopeks / 100, "provider": "tinkoff"})
-
-        try:
-            async with aiohttp.ClientSession() as s:
-                mz_username = db.get_mz_username(tg_id)
-                if not mz_username:
-                    # edge-case: нет связанного mz_user. Создадим по tg_username-паттерну.
-                    mz_username = marzban.build_mz_username(tg_id)
-                    db.set_mz_username(tg_id, mz_username)
-                user_data = await marzban.create_or_extend_user(s, tg_id, days, mz_username=mz_username)
-            mz_sub_url = user_data.get("subscription_url", "")
-            if mz_sub_url:
-                db.set_sub_url(tg_id, mz_sub_url)
-            sub_url = f"https://radarshield.mooo.com/sub/{sub_tokens.make_sub_token(tg_id)}"
-            expire_ts = user_data.get("expire")
-            expire_str = (
-                datetime.fromtimestamp(expire_ts, tz=timezone.utc).strftime("%d.%m.%Y")
-                if expire_ts else "—"
-            )
-        except Exception as e:
-            logger.error(f"tinkoff confirm: marzban failed for {order_id}: {e}")
-            # Не теряем платёж: юзер заплатил, активируем в следующий раз вручную
-            return "OK"
-
-        # Пишем юзеру в Telegram
-        if _tg_bot and tg_id:
-            from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-            try:
-                await _tg_bot.send_message(
-                    tg_id,
-                    f"✅ <b>Оплата {rub_str} прошла! Подписка активирована до {expire_str}</b>\n\n"
-                    f"🔗 Твоя ссылка:\n<code>{sub_url}</code>\n\n"
-                    "Нажми <b>📲 Открыть в приложении</b> — клиент откроется с готовым импортом.",
-                    parse_mode="HTML",
-                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton(text="👤 Профиль", callback_data="profile")],
-                        [InlineKeyboardButton(text="📲 Открыть в приложении",
-                                              url=f"https://radarshield.mooo.com/open/{mz_username}")],
-                    ]),
-                )
-                if int(os.environ.get("ADMIN_TG_ID", 0)):
-                    await _tg_bot.send_message(
-                        int(os.environ["ADMIN_TG_ID"]),
-                        f"💰 RUB-оплата: tg {tg_id}, план {plan_key}, {rub_str}",
-                    )
-            except Exception as e:
-                logger.error(f"tinkoff confirm: tg notify failed: {e}")
-
-    elif status == "REJECTED":
-        db.mark_tinkoff_rejected(order_id)
-        db.log_event(payment["tg_id"], "pay_rejected",
-                     {"plan": payment["plan_key"], "provider": "tinkoff"})
-
-    return "OK"
 
 
 @app.post("/api/robokassa/init")
@@ -834,50 +706,114 @@ async def robokassa_result(request: Request):
                  {"plan": plan_key, "amount_rub": rub_kopeks / 100,
                   "provider": "robokassa", "inv_id": inv_id})
 
-    try:
-        async with aiohttp.ClientSession() as s:
-            mz_username = db.get_mz_username(tg_id)
-            if not mz_username:
-                mz_username = marzban.build_mz_username(tg_id)
-                db.set_mz_username(tg_id, mz_username)
-            user_data = await marzban.create_or_extend_user(s, tg_id, days, mz_username=mz_username)
-        mz_sub_url = user_data.get("subscription_url", "")
-        if mz_sub_url:
-            db.set_sub_url(tg_id, mz_sub_url)
-        sub_url = f"https://radarshield.mooo.com/sub/{sub_tokens.make_sub_token(tg_id)}"
-        expire_ts = user_data.get("expire")
-        expire_str = (
-            datetime.fromtimestamp(expire_ts, tz=timezone.utc).strftime("%d.%m.%Y")
-            if expire_ts else "—"
-        )
-    except Exception as e:
-        logger.error(f"robokassa confirm: marzban failed for inv_id={inv_id}: {e}")
-        return PlainTextResponse(f"OK{inv_id}", status_code=200)
-
-    if _tg_bot and tg_id:
-        from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-        try:
-            await _tg_bot.send_message(
-                tg_id,
-                f"✅ <b>Оплата {rub_str} прошла! Подписка активирована до {expire_str}</b>\n\n"
-                f"🔗 Твоя ссылка:\n<code>{sub_url}</code>\n\n"
-                "Нажми <b>📲 Открыть в приложении</b> — клиент откроется с готовым импортом.",
-                parse_mode="HTML",
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="👤 Профиль", callback_data="profile")],
-                    [InlineKeyboardButton(text="📲 Открыть в приложении",
-                                          url=f"https://radarshield.mooo.com/open/{mz_username}")],
-                ]),
-            )
-            if int(os.environ.get("ADMIN_TG_ID", 0)):
-                await _tg_bot.send_message(
-                    int(os.environ["ADMIN_TG_ID"]),
-                    f"💰 Robokassa-оплата: tg {tg_id}, план {plan_key}, {rub_str}",
-                )
-        except Exception as e:
-            logger.error(f"robokassa confirm: tg notify failed: {e}")
+    # Активацию Marzban делаем в фоне с retry'ями: webhook должен ответить
+    # быстро (Robokassa тайм-аут ~30с), а Marzban может быть временно недоступен.
+    # Юзер получит сообщение в Telegram только после реальной активации.
+    asyncio.create_task(_activate_with_retry(inv_id, tg_id, plan_key, days, rub_str))
 
     return PlainTextResponse(f"OK{inv_id}", status_code=200)
+
+
+# Backoff для Marzban-активации после оплаты. Между попытками: 0с, 5с, 30с,
+# 2м, 10м, 1ч. На полный провал — алерт в группу поддержки.
+_ACTIVATE_BACKOFF_SEC = (0, 5, 30, 120, 600, 3600)
+
+
+async def _activate_with_retry(
+    inv_id: int, tg_id: int, plan_key: str, days: int, rub_str: str,
+) -> None:
+    """Создаёт/продлевает юзера в Marzban, шлёт уведомление в TG. Идемпотентно
+    (mark_robokassa_activated проверяет ещё-не-активированность). Не возвращает
+    исключения наружу — только логирует и алертит."""
+    last_err: Exception | None = None
+    for attempt, delay in enumerate(_ACTIVATE_BACKOFF_SEC, 1):
+        if delay:
+            await asyncio.sleep(delay)
+        try:
+            async with aiohttp.ClientSession() as s:
+                mz_username = db.get_mz_username(tg_id)
+                if not mz_username:
+                    mz_username = marzban.build_mz_username(tg_id)
+                    db.set_mz_username(tg_id, mz_username)
+                user_data = await marzban.create_or_extend_user(
+                    s, tg_id, days, mz_username=mz_username,
+                )
+            mz_sub_url = user_data.get("subscription_url", "")
+            if mz_sub_url:
+                db.set_sub_url(tg_id, mz_sub_url)
+            expire_ts = user_data.get("expire")
+            expire_str = (
+                datetime.fromtimestamp(expire_ts, tz=timezone.utc).strftime("%d.%m.%Y")
+                if expire_ts else "—"
+            )
+            if not db.mark_robokassa_activated(inv_id):
+                # Уже кто-то активировал параллельно (startup catch-up + webhook).
+                logger.info(f"activate inv_id={inv_id}: already activated, skipping notify")
+                return
+            await _send_activation_notice(tg_id, mz_username, rub_str, expire_str, plan_key)
+            logger.info(f"activate inv_id={inv_id} ok on attempt {attempt}")
+            return
+        except Exception as e:
+            last_err = e
+            logger.warning(
+                f"activate inv_id={inv_id} attempt {attempt}/{len(_ACTIVATE_BACKOFF_SEC)} failed: {e}"
+            )
+
+    logger.error(f"activate inv_id={inv_id} FAILED after {len(_ACTIVATE_BACKOFF_SEC)} attempts: {last_err}")
+    await _send_activation_alert(inv_id, tg_id, plan_key, last_err)
+
+
+async def _send_activation_notice(
+    tg_id: int, mz_username: str, rub_str: str, expire_str: str, plan_key: str,
+) -> None:
+    if not _tg_bot or not tg_id:
+        return
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+    sub_url = f"https://radarshield.mooo.com/sub/{sub_tokens.make_sub_token(tg_id)}"
+    try:
+        await _tg_bot.send_message(
+            tg_id,
+            f"✅ <b>Оплата {rub_str} прошла! Подписка активирована до {expire_str}</b>\n\n"
+            f"🔗 Твоя ссылка:\n<code>{sub_url}</code>\n\n"
+            "Нажми <b>📲 Открыть в приложении</b> — клиент откроется с готовым импортом.",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="👤 Профиль", callback_data="profile")],
+                [InlineKeyboardButton(text="📲 Открыть в приложении",
+                                      url=f"https://radarshield.mooo.com/open/{mz_username}")],
+            ]),
+        )
+        if int(os.environ.get("ADMIN_TG_ID", 0)):
+            await _tg_bot.send_message(
+                int(os.environ["ADMIN_TG_ID"]),
+                f"💰 Robokassa-оплата: tg {tg_id}, план {plan_key}, {rub_str}",
+            )
+    except Exception as e:
+        logger.error(f"activation notify failed for tg_id={tg_id}: {e}")
+
+
+async def _send_activation_alert(
+    inv_id: int, tg_id: int, plan_key: str, err: Exception | None,
+) -> None:
+    """Деньги есть, активации нет — нужна ручная разборка."""
+    bot = _support_bot or _tg_bot
+    if not bot or not SUPPORT_GROUP_ID:
+        return
+    chat_id = -1000000000000 - SUPPORT_GROUP_ID if SUPPORT_GROUP_ID > 0 else SUPPORT_GROUP_ID
+    try:
+        await bot.send_message(
+            chat_id,
+            f"🚨 <b>Marzban активация не удалась</b>\n\n"
+            f"inv_id: <code>{inv_id}</code>\n"
+            f"tg_id: <code>{tg_id}</code>\n"
+            f"plan: <code>{plan_key}</code>\n"
+            f"error: <code>{err}</code>\n\n"
+            "Деньги списаны, подписка не выдана. Нужно активировать вручную.",
+            parse_mode="HTML",
+            message_thread_id=ALERT_TOPIC_ID,
+        )
+    except Exception as e:
+        logger.error(f"activation alert send failed: {e}")
 
 
 @app.get("/pay/success", response_class=HTMLResponse)

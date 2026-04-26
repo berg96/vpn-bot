@@ -110,10 +110,20 @@ def init_db():
                 amount_kopeks INTEGER NOT NULL,
                 status TEXT NOT NULL DEFAULT 'pending',
                 created_at TEXT NOT NULL,
-                confirmed_at TEXT
+                confirmed_at TEXT,
+                activated_at TEXT
             )
         """)
         c.execute("CREATE INDEX IF NOT EXISTS ix_robokassa_tg_id ON robokassa_payments(tg_id)")
+        # Миграция: добавить activated_at в существующие БД, где колонки ещё нет.
+        cols = {r[1] for r in c.execute("PRAGMA table_info(robokassa_payments)").fetchall()}
+        if "activated_at" not in cols:
+            c.execute("ALTER TABLE robokassa_payments ADD COLUMN activated_at TEXT")
+            # Старые confirmed помечаем активированными (они активировались inline в webhook).
+            c.execute(
+                "UPDATE robokassa_payments SET activated_at=confirmed_at "
+                "WHERE status='confirmed' AND activated_at IS NULL"
+            )
 
 
 def record_user(tg_id: int, username: str | None) -> bool:
@@ -532,7 +542,7 @@ def create_robokassa_pending(tg_id: int, plan_key: str, amount_kopeks: int) -> i
 def get_robokassa_payment(inv_id: int) -> dict | None:
     with _conn() as c:
         row = c.execute(
-            "SELECT inv_id, tg_id, plan_key, amount_kopeks, status, created_at, confirmed_at "
+            "SELECT inv_id, tg_id, plan_key, amount_kopeks, status, created_at, confirmed_at, activated_at "
             "FROM robokassa_payments WHERE inv_id=?",
             (inv_id,),
         ).fetchone()
@@ -541,7 +551,7 @@ def get_robokassa_payment(inv_id: int) -> dict | None:
     return {
         "inv_id": row[0], "tg_id": row[1], "plan_key": row[2],
         "amount_kopeks": row[3], "status": row[4],
-        "created_at": row[5], "confirmed_at": row[6],
+        "created_at": row[5], "confirmed_at": row[6], "activated_at": row[7],
     }
 
 
@@ -555,6 +565,32 @@ def mark_robokassa_confirmed(inv_id: int) -> bool:
             (_now_iso(), inv_id),
         )
         return cur.rowcount > 0
+
+
+def mark_robokassa_activated(inv_id: int) -> bool:
+    """Помечает оплату как реально активированную в Marzban. True если запись изменилась."""
+    with _conn() as c:
+        cur = c.execute(
+            "UPDATE robokassa_payments SET activated_at=? WHERE inv_id=? AND activated_at IS NULL",
+            (_now_iso(), inv_id),
+        )
+        return cur.rowcount > 0
+
+
+def get_unactivated_robokassa_payments() -> list[dict]:
+    """Подтверждённые оплаты, для которых ещё не успешно активировали Marzban.
+    Используется на старте landing для добивания зависших активаций."""
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT inv_id, tg_id, plan_key, amount_kopeks, created_at, confirmed_at "
+            "FROM robokassa_payments WHERE status='confirmed' AND activated_at IS NULL "
+            "ORDER BY inv_id"
+        ).fetchall()
+    return [
+        {"inv_id": r[0], "tg_id": r[1], "plan_key": r[2],
+         "amount_kopeks": r[3], "created_at": r[4], "confirmed_at": r[5]}
+        for r in rows
+    ]
 
 
 def get_users_with_mz() -> list[dict]:
