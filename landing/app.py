@@ -675,15 +675,23 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
         exc.status_code,
         (f"⚠️ Ошибка {exc.status_code}", "Что-то пошло не так. Вернись на главную и попробуй заново."),
     )
+    # Дефолтные тексты Starlette/slowapi (англ.) не показываем — они ломают
+    # русскую страницу. Кастомные русские detail (например "Подписка не найдена.")
+    # пропускаем, пользователю они полезны.
+    _generic_details = ("Not Found", "Method Not Allowed", "Too Many Requests",
+                        "Forbidden", "Bad Request", "Internal Server Error")
     detail_msg = (
         str(exc.detail)
-        if exc.detail and not str(exc.detail).startswith(("Not Found", "Method Not Allowed"))
+        if exc.detail and str(exc.detail) not in _generic_details
         else default_msg
     )
     return templates.TemplateResponse(
         "404.html",
         {
             **_page_context(request),
+            "title": heading.replace("⚠️ ", "").replace("⏱ ", "")
+                            .replace("🚫 ", "").replace("🔎 ", "").replace("🛠 ", "")
+                            .replace("💥 ", "").replace("🕒 ", ""),
             "heading": heading,
             "message": detail_msg,
         },
