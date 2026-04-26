@@ -33,7 +33,7 @@
     <button id="lookup-btn" class="btn btn-primary btn-lg" style="width:100%;margin-top:16px;justify-content:center">
       Найти и оплатить
     </button>
-    <p id="lookup-status" style="min-height:20px;margin:14px 0 0;color:var(--ink-mute);font-size:13.5px;line-height:1.5"></p>
+    <p id="lookup-status" style="min-height:20px;margin:14px 0 0;color:var(--ink-mute);font-size:13.5px;line-height:1.5;text-align:center"></p>
   </div>
 
   <p style="text-align:center;color:var(--ink-mute);font-size:13.5px;margin-top:24px">
@@ -81,10 +81,13 @@
 
     var cfToken = '';
     if (hasCaptcha) {
-      if (!window.__cfToken) {
-        setStatus('Проверяем что ты не бот...', 'var(--ink-mute)');
-      }
+      // Сообщение показываем только если ждём дольше 3.5с — для большинства
+      // юзеров CF passive-проверка быстрее, лишний шум на UI не нужен.
+      var slowMsgTimer = window.__cfToken ? null : setTimeout(function() {
+        setStatus('Проверяем, что ты не бот...', 'var(--ink-mute)');
+      }, 3500);
       cfToken = await waitForCfToken(8000);
+      if (slowMsgTimer) clearTimeout(slowMsgTimer);
       if (!cfToken) {
         setStatus('Антибот-проверка не успела. Попробуй ещё раз через секунду.', 'var(--warn,#f59f00)');
         resetTurnstile();

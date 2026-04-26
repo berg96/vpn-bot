@@ -313,8 +313,16 @@ window.addEventListener('load', function() {
         btn.classList.add('btn-loading');
         btn.textContent = 'Проверяем';
       }
-      if (ctaStatus) ctaStatus.textContent = 'Подтверждаем что ты не бот...';
+      // Текст «Проверяем, что ты не бот» показываем только если ждём дольше
+      // 3.5с — для большинства юзеров CF passive verify быстрее.
+      var slowMsgTimer = setTimeout(function() {
+        if (ctaStatus) {
+          ctaStatus.textContent = 'Проверяем, что ты не бот...';
+          ctaStatus.style.color = 'var(--ink-mute)';
+        }
+      }, 3500);
       var token = await waitForCfToken(8000);
+      clearTimeout(slowMsgTimer);
       if (!token) {
         if (ctaStatus) {
           ctaStatus.textContent = 'Антибот-проверка не успела. Попробуй ещё раз через секунду.';
