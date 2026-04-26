@@ -189,6 +189,7 @@ footer{border-top:1px solid var(--line);padding:72px 0 32px;margin-top:80px;back
 .qr{display:flex;align-items:center;justify-content:center;margin:20px auto;padding:16px;background:#fff;border-radius:12px;width:272px;height:272px;box-sizing:border-box}
 .qr img,.qr canvas{display:block}
 .qr-desktop-only{display:flex}
+p.qr-desktop-only{display:block}
 @media (max-width: 768px){.qr-desktop-only{display:none !important}.mobile-only{display:inline-flex !important}.desktop-only{display:none !important}}
 .mobile-only{display:none}
 .install-shortcut{text-align:center;margin-bottom:28px}
