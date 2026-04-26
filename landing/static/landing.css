@@ -32,8 +32,8 @@ code{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:0.85em}
 nav.top{position:sticky;top:0;z-index:20;background:rgba(13,27,42,0.82);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
 .nav-row{display:flex;align-items:center;justify-content:space-between;height:68px}
 .brand{display:flex;align-items:center;gap:10px;font-family:'Manrope';font-weight:700;font-size:18px;letter-spacing:-0.01em;color:var(--ink)}
-.brand-mark{width:28px;height:28px;border-radius:8px;background:var(--accent);display:grid;place-items:center;color:#1a1208}
-.brand-mark svg{width:16px;height:16px}
+.brand-mark{width:28px;height:28px;display:grid;place-items:center;color:var(--accent)}
+.brand-mark svg{width:100%;height:100%}
 .nav-links{display:flex;gap:28px;font-size:14px;color:var(--ink-dim)}
 .nav-links a:hover{color:var(--ink)}
 .nav-cta{display:flex;gap:10px;align-items:center}
