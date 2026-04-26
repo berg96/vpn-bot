@@ -598,6 +598,19 @@ def mark_robokassa_activated(inv_id: int) -> bool:
         return cur.rowcount > 0
 
 
+def cleanup_stale_robokassa_pending(older_than_hours: int = 24) -> int:
+    """Удаляет pending-оплаты старше N часов. Robokassa-сессия тайм-аутит платёж
+    задолго до этого, так что pending запись после 24ч — это юзер закрыл вкладку
+    и ушёл. Возвращает число удалённых записей."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=older_than_hours)).isoformat()
+    with _conn() as c:
+        cur = c.execute(
+            "DELETE FROM robokassa_payments WHERE status='pending' AND created_at < ?",
+            (cutoff,),
+        )
+        return cur.rowcount
+
+
 def get_unactivated_robokassa_payments() -> list[dict]:
     """Подтверждённые оплаты, для которых ещё не успешно активировали Marzban.
     Используется на старте landing для добивания зависших активаций."""

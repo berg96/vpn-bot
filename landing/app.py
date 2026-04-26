@@ -138,18 +138,30 @@ async def _resume_unactivated_payments():
     активация осталась в фоне и умерла вместе со старым процессом."""
     import config as _cfg
     pending = db.get_unactivated_robokassa_payments()
-    if not pending:
-        return
-    logger.info(f"resuming {len(pending)} unactivated robokassa payments")
-    for p in pending:
-        plan = _cfg.PLANS.get(p["plan_key"])
-        if not plan:
-            logger.error(f"resume: unknown plan {p['plan_key']} for inv_id={p['inv_id']}")
-            continue
-        _name, days, _stars, _stars_str, _rub_kopeks, rub_str = plan
-        asyncio.create_task(
-            _activate_with_retry(p["inv_id"], p["tg_id"], p["plan_key"], days, rub_str)
-        )
+    if pending:
+        logger.info(f"resuming {len(pending)} unactivated robokassa payments")
+        for p in pending:
+            plan = _cfg.PLANS.get(p["plan_key"])
+            if not plan:
+                logger.error(f"resume: unknown plan {p['plan_key']} for inv_id={p['inv_id']}")
+                continue
+            _name, days, _stars, _stars_str, _rub_kopeks, rub_str = plan
+            asyncio.create_task(
+                _activate_with_retry(p["inv_id"], p["tg_id"], p["plan_key"], days, rub_str)
+            )
+    asyncio.create_task(_cleanup_loop())
+
+
+async def _cleanup_loop() -> None:
+    """Раз в час чистит pending-оплаты старше 24ч. Запускается на startup."""
+    while True:
+        try:
+            removed = db.cleanup_stale_robokassa_pending(older_than_hours=24)
+            if removed:
+                logger.info(f"cleanup: removed {removed} stale robokassa pending rows")
+        except Exception as e:
+            logger.error(f"cleanup loop error: {e}")
+        await asyncio.sleep(3600)
 
 
 APP_DOWNLOADS = {
@@ -595,11 +607,14 @@ async def user_lookup(request: Request):
     username = m.group(1)
     user = db.find_user_by_username(username)
     if not user:
+        # tg_id=0 — анонимный (юзер ещё не в БД); username хранится в meta для аналитики.
+        db.log_event(0, "pay_search_not_found", {"username": username})
         return {
             "error": "not_found",
             "username": username,
             "trial_hours": TRIAL_HOURS,
         }
+    db.log_event(user["tg_id"], "pay_search_found", {"username": user["username"]})
     uid = str(user["tg_id"])
     return {
         "ok": True,
@@ -801,6 +816,8 @@ async def _activate_with_retry(
             )
 
     logger.error(f"activate inv_id={inv_id} FAILED after {len(_ACTIVATE_BACKOFF_SEC)} attempts: {last_err}")
+    db.log_event(tg_id, "marzban_failed",
+                 {"inv_id": inv_id, "plan": plan_key, "error": str(last_err)[:200]})
     await _send_activation_alert(inv_id, tg_id, plan_key, last_err)
 
 
