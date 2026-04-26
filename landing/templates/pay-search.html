@@ -76,10 +76,11 @@
       if (data.error === 'invalid_format') {
         setStatus('Логин может содержать только латиницу, цифры и подчёркивания, длина 4–32.', 'var(--warn,#f59f00)');
       } else if (data.error === 'not_found') {
+        var hours = data.trial_hours || 3;
         status.innerHTML = 'Не нашли <b>@' + (data.username || raw.replace(/^@/, '')) + '</b>. ' +
-          'Проверь правильность или открой ' +
-          '<a href="https://t.me/' + data.bot_username + '" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600">@' + data.bot_username + '</a> ' +
-          '— активируем 7 дней бесплатно.';
+          'Проверь правильность написания — или попробуй ' +
+          '<a href="/#cta" style="color:var(--accent);font-weight:600">' + hours + ' часа бесплатно прямо сейчас</a>, ' +
+          'без регистрации.';
         status.style.color = 'var(--ink-dim)';
       } else if (data.error === 'empty') {
         setStatus('Введи логин.', 'var(--warn,#f59f00)');

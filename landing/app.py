@@ -598,7 +598,7 @@ async def user_lookup(request: Request):
         return {
             "error": "not_found",
             "username": username,
-            "bot_username": BOT_USERNAME,
+            "trial_hours": TRIAL_HOURS,
         }
     uid = str(user["tg_id"])
     return {
