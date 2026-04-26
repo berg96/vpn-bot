@@ -61,12 +61,14 @@
     </section>
 
     <section style="padding:20px 0">
-      <div class="section-head"><div><div class="section-tag">Шаг 2</div><h2>Скопируй ссылку</h2></div></div>
+      <div class="section-head"><div><div class="section-tag">Шаг 2</div><h2>Скопируй ссылку или открой на телефоне</h2></div></div>
       <div class="sub-block">
         <div class="sub-url-box">
           <code>{{ sub_url }}</code>
           <button class="btn-secondary" id="copy-btn-desktop" type="button">Копировать</button>
         </div>
+        <div id="qr" class="qr" style="margin:24px auto 0"></div>
+        <p class="tiny" style="text-align:center">Отсканируй QR камерой телефона — откроется приложение с готовым импортом.</p>
       </div>
     </section>
 
@@ -91,6 +93,7 @@
 </div>
 
 <script src="/static/app.js"></script>
+<script src="/static/qrcode.min.js"></script>
 <script>
 (function() {
   var subUrl = {{ sub_url|tojson }};
@@ -120,6 +123,18 @@
 
   if (!isAndroid && !isIOS) {
     desktop.style.display = 'block';
+    // QR кодирует текущую /open/{token} ссылку — телефон, отсканировав,
+    // откроет страницу и автоматически передастся в FLClash/Karing
+    // через mobile-flow на этой же странице.
+    var qrEl = document.getElementById('qr');
+    if (qrEl && window.QRCode) {
+      new QRCode(qrEl, {
+        text: window.location.href,
+        width: 240, height: 240,
+        colorDark: '#000', colorLight: '#fff',
+        correctLevel: QRCode.CorrectLevel.M,
+      });
+    }
     return;
   }
 
