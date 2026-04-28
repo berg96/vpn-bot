@@ -2,6 +2,9 @@
 .env
 data/
 
+# Internal planning notes (not for public)
+IDEAS.md
+
 # Python
 __pycache__/
 *.py[cod]
