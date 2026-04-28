@@ -962,20 +962,65 @@ async def cb_do_start(call: CallbackQuery):
 # изменения, и заблокированные юзеры продолжат пользоваться через зависшую ноду.
 
 NODE_HEALTH_INTERVAL = 3600  # 1 час
+NODE_RECONNECT_WAIT = 15  # сек после reconnect, перед перепроверкой
 
 _node_alerted: dict[int, bool] = {}
 
 
-async def _check_nodes_health(session: aiohttp.ClientSession) -> None:
-    """Если нода != connected — шлём алерт админу (один раз, пока не починится).
-    При восстановлении — recovery-алерт."""
-    if not config.ADMIN_TG_ID:
+async def _send_alert(session: aiohttp.ClientSession, text: str) -> None:
+    """Шлём в bigsupport через Jarvis-токен. Fallback — VPN-бот в личку админа."""
+    if config.ALERT_BOT_TOKEN and config.ALERT_CHAT_ID:
+        payload: dict = {
+            "chat_id": config.ALERT_CHAT_ID,
+            "text": text,
+            "parse_mode": "HTML",
+        }
+        if config.ALERT_THREAD_ID:
+            payload["message_thread_id"] = config.ALERT_THREAD_ID
+        try:
+            resp = await session.post(
+                f"https://api.telegram.org/bot{config.ALERT_BOT_TOKEN}/sendMessage",
+                json=payload,
+            )
+            data = await resp.json()
+            if data.get("ok"):
+                return
+            logger.error(f"alert to bigsupport failed: {data}")
+        except Exception as e:
+            logger.error(f"alert to bigsupport raised: {e}")
+    if config.ADMIN_TG_ID:
+        try:
+            await bot.send_message(config.ADMIN_TG_ID, text, parse_mode=ParseMode.HTML)
+        except Exception as e:
+            logger.error(f"alert fallback to admin failed: {e}")
+
+
+def _enqueue_bergops_task(*, prompt: str, sender_label: str = "vpn-bot") -> None:
+    """LPUSH задачи в Redis для BergOps. Best-effort, ошибки только в лог."""
+    if not config.BERGOPS_REDIS_URL:
         return
     try:
-        headers = await marzban._headers(session)
-        resp = await session.get(f"{marzban.MARZBAN_URL}/api/nodes", headers=headers)
-        resp.raise_for_status()
-        nodes = await resp.json()
+        import redis  # local import — не падать если пакета нет
+        import json as _json
+        import uuid as _uuid
+        r = redis.from_url(config.BERGOPS_REDIS_URL, socket_timeout=3)
+        payload = dict(
+            task_id=_uuid.uuid4().hex[:16],
+            sender_label=sender_label,
+            audit_msg_id=None,
+            prompt=prompt,
+        )
+        r.rpush(config.BERGOPS_TASKS_KEY, _json.dumps(payload, ensure_ascii=False))
+        logger.info(f"bergops task enqueued (sender={sender_label})")
+    except Exception as e:
+        logger.warning(f"bergops task enqueue failed: {e}")
+
+
+async def _check_nodes_health(session: aiohttp.ClientSession) -> None:
+    """Нода не connected → автоматический reconnect → если не помогло, алерт в bigsupport.
+    Recovery-сообщение тоже в bigsupport."""
+    try:
+        nodes = await marzban.get_nodes(session)
     except Exception as e:
         logger.error(f"nodes health check failed: {e}")
         return
@@ -986,33 +1031,69 @@ async def _check_nodes_health(session: aiohttp.ClientSession) -> None:
         status = n.get("status", "unknown")
         was_down = _node_alerted.get(node_id, False)
 
-        if status != "connected" and not was_down:
+        if status == "connected":
+            if was_down:
+                _node_alerted[node_id] = False
+                await _send_alert(session, f"✅ Нода <b>{name}</b> снова connected.")
+            continue
+
+        # status != connected — пытаемся починить через master API reconnect
+        logger.info(f"node {name} status={status}, trying reconnect")
+        try:
+            await marzban.reconnect_node(session, node_id)
+        except Exception as e:
+            logger.error(f"reconnect {name} failed: {e}")
+
+        await asyncio.sleep(NODE_RECONNECT_WAIT)
+
+        try:
+            recheck = await marzban.get_nodes(session)
+        except Exception as e:
+            logger.error(f"recheck after reconnect failed: {e}")
+            continue
+        cur = next((x for x in recheck if x.get("id") == node_id), None)
+        cur_status = cur.get("status") if cur else "unknown"
+        cur_msg = (cur.get("message") if cur else None) or ""
+
+        if cur_status == "connected":
+            logger.info(f"node {name} auto-recovered via reconnect")
+            if was_down:
+                _node_alerted[node_id] = False
+                await _send_alert(
+                    session,
+                    f"✅ Нода <b>{name}</b> поднята авто-reconnect'ом.",
+                )
+            continue
+
+        if not was_down:
             _node_alerted[node_id] = True
-            try:
-                await bot.send_message(
-                    config.ADMIN_TG_ID,
-                    f"⚠️ <b>Нода Marzban не в порядке</b>\n\n"
-                    f"Имя: <b>{name}</b>\n"
-                    f"Статус: <code>{status}</code>\n\n"
-                    f"Пока нода в этом состоянии — Marzban не может доставлять ей "
-                    f"изменения юзеров (disable/revoke). Юзеры с истёкшими подписками "
-                    f"могут продолжать пользоваться через эту ноду.\n\n"
-                    f"Проверь и при необходимости перезапусти Marzban-панель "
-                    f"(`docker restart` контейнера marzban).",
-                    parse_mode=ParseMode.HTML,
-                )
-            except Exception as e:
-                logger.error(f"failed to send node down alert: {e}")
-        elif status == "connected" and was_down:
-            _node_alerted[node_id] = False
-            try:
-                await bot.send_message(
-                    config.ADMIN_TG_ID,
-                    f"✅ Нода <b>{name}</b> снова connected.",
-                    parse_mode=ParseMode.HTML,
-                )
-            except Exception as e:
-                logger.error(f"failed to send node recovery alert: {e}")
+            await _send_alert(
+                session,
+                f"⚠️ <b>Нода Marzban не в порядке</b>\n\n"
+                f"Имя: <b>{name}</b>\n"
+                f"Статус: <code>{cur_status}</code>\n"
+                f"Сообщение: <code>{cur_msg}</code>\n\n"
+                f"Авто-reconnect через master API не помог. "
+                f"Проверь руками: SSH на ноду → "
+                f"<code>docker logs marzban-node-marzban-node-1 --tail 100</code>, "
+                f"при необходимости <code>docker restart marzban-node-marzban-node-1</code>.\n\n"
+                f"Пока нода лежит — Marzban не доставляет ей изменения юзеров "
+                f"(disable/revoke), истёкшие подписки могут продолжать ходить через неё.",
+            )
+            # Параллельно ставим задачу BergOps'у — пусть SSH'нет на ноду и
+            # попробует поднять (docker logs / restart marzban-node).
+            _enqueue_bergops_task(
+                sender_label="vpn-bot",
+                prompt=(
+                    f"Нода Marzban «{name}» (id={node_id}) не подключается. "
+                    f"Текущий статус: {cur_status}. Сообщение мастера: {cur_msg!r}. "
+                    f"Авто-reconnect через master API уже сделан — не помогло. "
+                    f"Сходи по SSH на ноду (alpha/bravo по имени из карты), "
+                    f"посмотри логи `docker logs marzban-node-marzban-node-1 --tail 100`, "
+                    f"при явной причине — сделай `docker restart marzban-node-marzban-node-1`. "
+                    f"Если нет уверенности — отчитайся, что нашёл, и попроси Артёма."
+                ),
+            )
 
 
 async def _node_health_loop():

@@ -38,6 +38,20 @@ async def _headers(session: aiohttp.ClientSession) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
+async def reconnect_node(session: aiohttp.ClientSession, node_id: int) -> None:
+    resp = await session.post(
+        f"{MARZBAN_URL}/api/node/{node_id}/reconnect",
+        headers=await _headers(session),
+    )
+    resp.raise_for_status()
+
+
+async def get_nodes(session: aiohttp.ClientSession) -> list[dict]:
+    resp = await session.get(f"{MARZBAN_URL}/api/nodes", headers=await _headers(session))
+    resp.raise_for_status()
+    return await resp.json()
+
+
 def build_mz_username(tg_id: int, tg_username: str | None = None, first_name: str | None = None) -> str:
     """Генерирует красивое имя для Marzban: ник > имя+id > tg_id."""
     if tg_username:
