@@ -439,7 +439,9 @@ CAPTIVE_UUID = os.environ.get("CAPTIVE_UUID", "")
 CAPTIVE_REALITY_PUBLIC_KEY = os.environ.get("CAPTIVE_REALITY_PUBLIC_KEY", "")
 CAPTIVE_SHORT_ID = os.environ.get("CAPTIVE_SHORT_ID", "")
 CAPTIVE_SNI = os.environ.get("CAPTIVE_SNI", "www.cloudflare.com")
-CAPTIVE_HOST = os.environ.get("CAPTIVE_HOST", "radarshield.mooo.com")
+# server в Clash YAML — IP (не домен), иначе при enhanced-mode: fake-ip Mihomo
+# может резолвить через fake-ip и коннект уйдёт в /dev/null. Marzban делает так же.
+CAPTIVE_HOST = os.environ.get("CAPTIVE_HOST", "82.38.171.220")
 CAPTIVE_PORT = int(os.environ.get("CAPTIVE_PORT", "443"))
 
 
@@ -476,7 +478,7 @@ dns:
     - 8.8.8.8
 
 proxies:
-  - name: 'captive'
+  - name: '🔴 RS-Captive'
     type: vless
     server: {CAPTIVE_HOST}
     port: {CAPTIVE_PORT}
@@ -487,15 +489,19 @@ proxies:
     flow: ''
     client-fingerprint: chrome
     servername: {CAPTIVE_SNI}
+    tcp-opts:
+      headers:
+        Host: {CAPTIVE_SNI}
+      ip-version: dual
     reality-opts:
       public-key: {CAPTIVE_REALITY_PUBLIC_KEY}
       short-id: {CAPTIVE_SHORT_ID}
 
 proxy-groups:
-  - name: '🔴 Подписка истекла'
+  - name: 'captive'
     type: select
     proxies:
-      - captive
+      - '🔴 RS-Captive'
 
 rules:
   # Локалка
@@ -558,7 +564,7 @@ def _captive_sub_response(tg_id: int | None = None, ua: str = ""):
 
     if _is_clash_client(ua):
         body = _captive_clash_yaml(pay_url, remark).encode()
-        media_type = "application/x-yaml; charset=utf-8"
+        media_type = "text/yaml; charset=utf-8"
     else:
         vless = (
             f"vless://{CAPTIVE_UUID}@{CAPTIVE_HOST}:{CAPTIVE_PORT}"
