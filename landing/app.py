@@ -592,13 +592,11 @@ def _captive_sub_response(tg_id: int | None = None, ua: str = ""):
         media_type = "text/plain; charset=utf-8"
 
     expired_at = int(time.time()) - 3600  # час назад → клиент рисует красное "Expired"
-    # Имя файла — единственное место в FLClash/Karing, где можно показать
-    # юзеру состояние подписки прямо в карточке профиля (на месте обычного
-    # имени — он его и читает в списке профилей). Только ASCII — иначе клиент
-    # может побить кодировку при показе.
-    filename = "RadarShield-EXPIRED-pay-at-radarshield.mooo.com"
+    # filename статичный — клиент перетягивает его только при импорте нового
+    # профиля, не при refresh. Динамическая инфа об истечении живёт в имени
+    # прокси внутри YAML (там обновляется на каждом auto-refresh).
     headers = {
-        "content-disposition": f'attachment; filename="{filename}"',
+        "content-disposition": 'attachment; filename="RadarShield"',
         "subscription-userinfo": (
             f"upload=0; download=0; total=1; expire={expired_at}"
         ),
@@ -642,27 +640,11 @@ async def _proxy_marzban_sub(sub_url: str, request: Request):
         logger.error(f"proxy_sub fetch failed: {e}")
         raise HTTPException(status_code=502, detail="Upstream error")
 
-    # Имя профиля — единственное где FLClash/Karing рисуют статус. Кладём
-    # дату истечения, юзер видит её в списке профилей. При auto-refresh
-    # (раз в N часов) клиент перетянет новый filename → имя обновится без
-    # переподключения.
-    filename = "RadarShield"
-    if mz_userinfo:
-        import re as _re
-        m = _re.search(r"expire=(\d+)", mz_userinfo)
-        if m:
-            try:
-                expire_ts = int(m.group(1))
-                if expire_ts > 0:
-                    expire_str = datetime.fromtimestamp(expire_ts, tz=timezone.utc).strftime("%d.%m.%Y")
-                    filename = f"RadarShield-active-until-{expire_str}"
-                else:
-                    filename = "RadarShield-unlimited"
-            except Exception:
-                pass
-
+    # filename статичный — клиент перетягивает его только при импорте, не
+    # при refresh. Дата истечения уже есть в `subscription-userinfo` —
+    # FLClash/Karing рисуют её в карточке профиля.
     headers = {
-        "content-disposition": f'attachment; filename="{filename}"',
+        "content-disposition": 'attachment; filename="RadarShield"',
     }
     if mz_userinfo:
         headers["subscription-userinfo"] = mz_userinfo
