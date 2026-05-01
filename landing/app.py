@@ -491,7 +491,7 @@ dns:
     '+.robokassa.com': 1.1.1.1
 
 proxies:
-  - name: '🔴 RS-Captive'
+  - name: '🔴 ИСТЕКЛА · ОПЛАТИ: radarshield.mooo.com/pay'
     type: vless
     server: {CAPTIVE_HOST}
     port: {CAPTIVE_PORT}
@@ -514,7 +514,7 @@ proxy-groups:
   - name: 'captive'
     type: select
     proxies:
-      - '🔴 RS-Captive'
+      - '🔴 ИСТЕКЛА · ОПЛАТИ: radarshield.mooo.com/pay'
 
 rules:
   # Локалка
