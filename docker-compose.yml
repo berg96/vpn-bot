@@ -21,3 +21,11 @@ services:
     volumes:
       - ./data:/data
     network_mode: host
+
+  captive-xray:
+    image: teddysun/xray:latest
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./captive/xray_config.json:/etc/xray/config.json:ro
+    command: ["xray", "-config", "/etc/xray/config.json"]

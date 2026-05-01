@@ -16,3 +16,4 @@ __pycache__/
 
 # OS
 .DS_Store
+captive/xray_config.json

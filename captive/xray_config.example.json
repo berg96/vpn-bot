@@ -1,0 +1,106 @@
+{
+  "log": {
+    "loglevel": "warning"
+  },
+
+  "dns": {
+    "servers": [
+      {
+        "address": "1.1.1.1",
+        "domains": [
+          "domain:radarshield.mooo.com",
+          "domain:robokassa.ru",
+          "domain:robokassa.com",
+          "domain:cpropayments.ru"
+        ]
+      }
+    ],
+    "hosts": {
+      "captive.apple.com": "82.38.171.220",
+      "www.apple.com": "82.38.171.220",
+      "www.appleiphonecell.com": "82.38.171.220",
+      "connectivitycheck.gstatic.com": "82.38.171.220",
+      "clients3.google.com": "82.38.171.220",
+      "connectivity-check.ubuntu.com": "82.38.171.220",
+      "www.msftconnecttest.com": "82.38.171.220",
+      "www.msftncsi.com": "82.38.171.220",
+      "detectportal.firefox.com": "82.38.171.220"
+    }
+  },
+
+  "inbounds": [
+    {
+      "tag": "captive_in",
+      "listen": "127.0.0.1",
+      "port": 10003,
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "id": "${CAPTIVE_UUID}",
+            "flow": ""
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "show": false,
+          "dest": "www.cloudflare.com:443",
+          "xver": 0,
+          "serverNames": ["www.cloudflare.com"],
+          "privateKey": "${CAPTIVE_REALITY_PRIVATE_KEY}",
+          "shortIds": ["${CAPTIVE_SHORT_ID}"]
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": ["http", "tls"],
+        "metadataOnly": false,
+        "routeOnly": false
+      }
+    }
+  ],
+
+  "outbounds": [
+    {
+      "tag": "freedom",
+      "protocol": "freedom",
+      "settings": {
+        "domainStrategy": "UseIP"
+      }
+    },
+    {
+      "tag": "block",
+      "protocol": "blackhole"
+    }
+  ],
+
+  "routing": {
+    "domainStrategy": "AsIs",
+    "rules": [
+      {
+        "type": "field",
+        "domain": [
+          "domain:radarshield.mooo.com",
+          "domain:robokassa.ru",
+          "domain:robokassa.com",
+          "domain:cpropayments.ru"
+        ],
+        "outboundTag": "freedom"
+      },
+      {
+        "type": "field",
+        "ip": ["82.38.171.220"],
+        "outboundTag": "freedom"
+      },
+      {
+        "type": "field",
+        "outboundTag": "block",
+        "network": "tcp,udp"
+      }
+    ]
+  }
+}

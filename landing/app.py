@@ -435,31 +435,167 @@ def _is_active(user: dict) -> bool:
     return expire > int(datetime.now(timezone.utc).timestamp())
 
 
-def _expired_sub_response():
-    """Поддельный sub с одним фейк-сервером, имя = призыв продлить.
+CAPTIVE_UUID = os.environ.get("CAPTIVE_UUID", "")
+CAPTIVE_REALITY_PUBLIC_KEY = os.environ.get("CAPTIVE_REALITY_PUBLIC_KEY", "")
+CAPTIVE_SHORT_ID = os.environ.get("CAPTIVE_SHORT_ID", "")
+CAPTIVE_SNI = os.environ.get("CAPTIVE_SNI", "www.cloudflare.com")
+CAPTIVE_HOST = os.environ.get("CAPTIVE_HOST", "radarshield.mooo.com")
+CAPTIVE_PORT = int(os.environ.get("CAPTIVE_PORT", "443"))
 
-    В Karing/FLClash отображается как сервер с именем — пользователь
-    видит ссылку на оплату прямо в списке серверов клиента.
+
+def _is_clash_client(ua: str) -> bool:
+    """FLClash, Karing, Mihomo, Stash — все mihomo-based, читают Clash YAML."""
+    ua_lower = (ua or "").lower()
+    return any(
+        marker in ua_lower
+        for marker in ("clash", "mihomo", "flclash", "karing", "stash")
+    )
+
+
+def _captive_clash_yaml(pay_url: str, remark: str) -> str:
+    """Clash YAML с одним captive-прокси и жёсткими client-side rules.
+
+    DIRECT для radarshield + Robokassa: юзер всегда сможет открыть лендинг и
+    оплатить, даже если VPN-туннель не поднимается. Captive-probes идут через
+    туннель → серверный nginx :80 отдаёт 302 (Android может показать popup).
+    Всё остальное — REJECT на клиенте, **до** туннеля. Юзер видит «нет
+    интернета» во всех приложениях кроме нашего сайта.
+    """
+    return f"""mode: rule
+port: 7890
+allow-lan: false
+log-level: warning
+
+dns:
+  enable: true
+  ipv6: false
+  enhanced-mode: fake-ip
+  fake-ip-range: 198.18.0.0/15
+  nameserver:
+    - 1.1.1.1
+    - 8.8.8.8
+
+proxies:
+  - name: 'captive'
+    type: vless
+    server: {CAPTIVE_HOST}
+    port: {CAPTIVE_PORT}
+    uuid: {CAPTIVE_UUID}
+    network: tcp
+    udp: true
+    tls: true
+    flow: ''
+    client-fingerprint: chrome
+    servername: {CAPTIVE_SNI}
+    reality-opts:
+      public-key: {CAPTIVE_REALITY_PUBLIC_KEY}
+      short-id: {CAPTIVE_SHORT_ID}
+
+proxy-groups:
+  - name: '🔴 Подписка истекла'
+    type: select
+    proxies:
+      - captive
+
+rules:
+  # Локалка
+  - IP-CIDR,127.0.0.0/8,DIRECT,no-resolve
+  - IP-CIDR,10.0.0.0/8,DIRECT,no-resolve
+  - IP-CIDR,172.16.0.0/12,DIRECT,no-resolve
+  - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
+
+  # Наш сайт + Robokassa — DIRECT, идут без VPN
+  - DOMAIN-SUFFIX,radarshield.mooo.com,DIRECT
+  - DOMAIN-SUFFIX,robokassa.ru,DIRECT
+  - DOMAIN-SUFFIX,robokassa.com,DIRECT
+  - DOMAIN-SUFFIX,cpropayments.ru,DIRECT
+  - DOMAIN-SUFFIX,roboxchange.com,DIRECT
+
+  # OS captive-probes — через captive-туннель (наш nginx :80 отдаст 302 → popup)
+  - DOMAIN-SUFFIX,captive.apple.com,captive
+  - DOMAIN-SUFFIX,www.apple.com,captive
+  - DOMAIN-SUFFIX,connectivitycheck.gstatic.com,captive
+  - DOMAIN-SUFFIX,clients3.google.com,captive
+  - DOMAIN-SUFFIX,www.msftconnecttest.com,captive
+  - DOMAIN-SUFFIX,www.msftncsi.com,captive
+  - DOMAIN-SUFFIX,detectportal.firefox.com,captive
+  - DOMAIN-SUFFIX,connectivity-check.ubuntu.com,captive
+
+  # Всё остальное — REJECT на клиенте. Юзер видит «нет интернета».
+  - MATCH,REJECT
+
+# Profile metadata — заголовок профиля в FLClash/Karing
+# Юзер увидит '🔴 Подписка истекла' прямо в списке профилей.
+"""
+
+
+def _captive_sub_response(tg_id: int | None = None, ua: str = ""):
+    """Captive-конфиг для юзеров с истёкшей подпиской.
+
+    Двуслойная защита:
+      1. Серверный routing block в captive-Xray (порт 10003 за nginx SNI
+         по `www.cloudflare.com`) — разрешены только наш сайт + Robokassa.
+      2. Клиентский Clash-rules с REJECT для всего кроме allowlist (для
+         FLClash/Karing/Mihomo). DIRECT для radarshield/Robokassa — юзер
+         всегда сможет открыть лендинг даже если туннель не поднялся.
+
+    Headers `subscription-userinfo: expire=<прошлое>` + `profile-web-page-url`
+    активируют native UX в клиенте: красный профиль «Expired» + кнопка «Renew».
+
+    Формат тела — Clash YAML для FLClash/Karing, иначе VLESS-uri base64.
     """
     import base64 as _b64
     from urllib.parse import quote
     from fastapi.responses import Response as _Resp
 
-    remark = "🔴 Подписка кончилась — radarshield.mooo.com/pay"
-    dummy = (
-        f"vless://00000000-0000-0000-0000-000000000000@127.0.0.1:443"
-        f"?type=tcp&security=none#{quote(remark)}"
-    )
-    body = _b64.b64encode(dummy.encode()).decode().encode()
-    return _Resp(
-        content=body,
-        media_type="text/plain; charset=utf-8",
-        headers={"content-disposition": 'attachment; filename="RadarShield VPN"'},
-    )
+    if tg_id is not None:
+        uid = str(tg_id)
+        pay_url = f"https://radarshield.mooo.com/pay?uid={uid}&sig={_make_pay_sig(uid)}"
+    else:
+        pay_url = "https://radarshield.mooo.com/pay"
+
+    remark = f"🔴 Продли подписку → {pay_url}"
+
+    if _is_clash_client(ua):
+        body = _captive_clash_yaml(pay_url, remark).encode()
+        media_type = "application/x-yaml; charset=utf-8"
+    else:
+        vless = (
+            f"vless://{CAPTIVE_UUID}@{CAPTIVE_HOST}:{CAPTIVE_PORT}"
+            f"?type=tcp&security=reality"
+            f"&pbk={CAPTIVE_REALITY_PUBLIC_KEY}"
+            f"&sid={CAPTIVE_SHORT_ID}"
+            f"&sni={CAPTIVE_SNI}"
+            f"&fp=chrome&flow="
+            f"#{quote(remark)}"
+        )
+        body = _b64.b64encode(vless.encode()).decode().encode()
+        media_type = "text/plain; charset=utf-8"
+
+    expired_at = int(time.time()) - 3600  # час назад → клиент рисует красное "Expired"
+    headers = {
+        "content-disposition": 'attachment; filename="RadarShield VPN"',
+        "subscription-userinfo": (
+            f"upload=0; download=0; total=1; expire={expired_at}"
+        ),
+        "profile-update-interval": "12",
+        "profile-web-page-url": pay_url,
+        "support-url": "https://t.me/radarshield_support_bot",
+    }
+    return _Resp(content=body, media_type=media_type, headers=headers)
 
 
-async def _proxy_marzban_sub(sub_url: str, request: Request):
-    """Скачивает sub-контент из Marzban (внутренний URL) и возвращает клиенту."""
+# Backwards-compat alias — старое имя ещё может быть в логах/импортах.
+_expired_sub_response = _captive_sub_response
+
+
+async def _proxy_marzban_sub(sub_url: str, request: Request, tg_id: int | None = None):
+    """Скачивает sub-контент из Marzban (внутренний URL) и возвращает клиенту.
+
+    Пробрасываем `subscription-userinfo` от Marzban (счётчик трафика, expire)
+    и добавляем свои `profile-web-page-url` + `support-url` — FLClash и Karing
+    рисуют по ним кнопки «Renew» и «Поддержка» прямо в UI клиента.
+    """
     from fastapi.responses import Response as _Resp
 
     # Заменяем публичный домен на внутренний Marzban — иначе nginx зациклится
@@ -478,14 +614,31 @@ async def _proxy_marzban_sub(sub_url: str, request: Request):
             resp = await s.get(sub_url, headers={"User-Agent": ua}, timeout=aiohttp.ClientTimeout(total=15))
             content = await resp.read()
             content_type = resp.headers.get("Content-Type", "text/plain; charset=utf-8")
+            mz_userinfo = resp.headers.get("subscription-userinfo", "")
     except Exception as e:
         logger.error(f"proxy_sub fetch failed: {e}")
         raise HTTPException(status_code=502, detail="Upstream error")
 
+    # Pay-link с tg_id если знаем (Path 1), иначе общий — клиент покажет кнопку,
+    # юзер откроет лендинг и введёт username/email вручную.
+    if tg_id is not None:
+        uid = str(tg_id)
+        pay_url = f"https://radarshield.mooo.com/pay?uid={uid}&sig={_make_pay_sig(uid)}"
+    else:
+        pay_url = "https://radarshield.mooo.com/pay"
+
+    headers = {
+        "content-disposition": 'attachment; filename="RadarShield VPN"',
+        "profile-update-interval": "12",
+        "profile-web-page-url": pay_url,
+        "support-url": "https://t.me/radarshield_support_bot",
+    }
+    if mz_userinfo:
+        headers["subscription-userinfo"] = mz_userinfo
     return _Resp(
         content=content,
         media_type=content_type,
-        headers={"content-disposition": 'attachment; filename="RadarShield VPN"'},
+        headers=headers,
     )
 
 
@@ -522,8 +675,8 @@ async def proxy_sub(token: str, request: Request):
             raise HTTPException(status_code=404, detail="Not found")
 
         if not _is_active(user):
-            return _expired_sub_response()
-        return await _proxy_marzban_sub(user["subscription_url"], request)
+            return _captive_sub_response(tg_id, ua=request.headers.get("user-agent", ""))
+        return await _proxy_marzban_sub(user["subscription_url"], request, tg_id=tg_id)
 
     # --- Path 2: legacy Marzban-base64 ---
     # Декодируем имя из марзбановского токена. Пускаем только если:
@@ -557,7 +710,9 @@ async def proxy_sub(token: str, request: Request):
         raise HTTPException(status_code=404, detail="Not found")
 
     if not _is_active(user):
-        return _expired_sub_response()
+        # Path 2: legacy безлимитчики/lp-юзеры — tg_id не извлечь из base64-username,
+        # пускаем без идентификации, юзер сам введёт username/email на /pay.
+        return _captive_sub_response(None, ua=request.headers.get("user-agent", ""))
     return await _proxy_marzban_sub(user["subscription_url"], request)
 
 
