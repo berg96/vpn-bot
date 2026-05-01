@@ -462,20 +462,33 @@ def _captive_clash_yaml(pay_url: str, remark: str) -> str:
     туннель → серверный nginx :80 отдаёт 302 (Android может показать popup).
     Всё остальное — REJECT на клиенте, **до** туннеля. Юзер видит «нет
     интернета» во всех приложениях кроме нашего сайта.
+
+    Первая строка `#!profile-update-interval: 12` — формат Karing (он
+    парсит profile-update-interval из тела YAML, не из HTTP-заголовка).
     """
-    return f"""mode: rule
+    return f"""#!profile-update-interval: 12
+mode: rule
 port: 7890
 allow-lan: false
 log-level: warning
 
+# Hosts: жёстко прибиваем наш домен к IP сервера. Если у клиента DNS не
+# работает (РФ-провайдер блочит 1.1.1.1, captive-туннель режет UDP 53,
+# и т.п.) — этот mapping всё равно даст связаться с лендингом по DIRECT.
+hosts:
+  radarshield.mooo.com: 82.38.171.220
+
 dns:
   enable: true
   ipv6: false
-  enhanced-mode: fake-ip
-  fake-ip-range: 198.18.0.0/15
+  enhanced-mode: redir-host
   nameserver:
     - 1.1.1.1
     - 8.8.8.8
+  nameserver-policy:
+    'radarshield.mooo.com': 1.1.1.1
+    '+.robokassa.ru': 1.1.1.1
+    '+.robokassa.com': 1.1.1.1
 
 proxies:
   - name: '🔴 RS-Captive'
@@ -579,14 +592,16 @@ def _captive_sub_response(tg_id: int | None = None, ua: str = ""):
         media_type = "text/plain; charset=utf-8"
 
     expired_at = int(time.time()) - 3600  # час назад → клиент рисует красное "Expired"
+    # Имя файла — единственное место в FLClash/Karing, где можно показать
+    # юзеру состояние подписки прямо в карточке профиля (на месте обычного
+    # имени — он его и читает в списке профилей). Только ASCII — иначе клиент
+    # может побить кодировку при показе.
+    filename = "RadarShield-EXPIRED-pay-at-radarshield.mooo.com"
     headers = {
-        "content-disposition": 'attachment; filename="RadarShield VPN"',
+        "content-disposition": f'attachment; filename="{filename}"',
         "subscription-userinfo": (
             f"upload=0; download=0; total=1; expire={expired_at}"
         ),
-        "profile-update-interval": "12",
-        "profile-web-page-url": pay_url,
-        "support-url": "https://t.me/radarshield_support_bot",
     }
     return _Resp(content=body, media_type=media_type, headers=headers)
 
@@ -595,12 +610,14 @@ def _captive_sub_response(tg_id: int | None = None, ua: str = ""):
 _expired_sub_response = _captive_sub_response
 
 
-async def _proxy_marzban_sub(sub_url: str, request: Request, tg_id: int | None = None):
+async def _proxy_marzban_sub(sub_url: str, request: Request):
     """Скачивает sub-контент из Marzban (внутренний URL) и возвращает клиенту.
 
-    Пробрасываем `subscription-userinfo` от Marzban (счётчик трафика, expire)
-    и добавляем свои `profile-web-page-url` + `support-url` — FLClash и Karing
-    рисуют по ним кнопки «Renew» и «Поддержка» прямо в UI клиента.
+    Пробрасываем `subscription-userinfo` (Marzban → клиент) и подменяем
+    `content-disposition: filename` на динамический «RadarShield-active-
+    until-DD.MM.YYYY» — это единственное место где FLClash/Karing рисуют
+    статус подписки в карточке профиля. При auto-refresh клиент перетянет
+    новое имя без переподключения.
     """
     from fastapi.responses import Response as _Resp
 
@@ -625,19 +642,27 @@ async def _proxy_marzban_sub(sub_url: str, request: Request, tg_id: int | None =
         logger.error(f"proxy_sub fetch failed: {e}")
         raise HTTPException(status_code=502, detail="Upstream error")
 
-    # Pay-link с tg_id если знаем (Path 1), иначе общий — клиент покажет кнопку,
-    # юзер откроет лендинг и введёт username/email вручную.
-    if tg_id is not None:
-        uid = str(tg_id)
-        pay_url = f"https://radarshield.mooo.com/pay?uid={uid}&sig={_make_pay_sig(uid)}"
-    else:
-        pay_url = "https://radarshield.mooo.com/pay"
+    # Имя профиля — единственное где FLClash/Karing рисуют статус. Кладём
+    # дату истечения, юзер видит её в списке профилей. При auto-refresh
+    # (раз в N часов) клиент перетянет новый filename → имя обновится без
+    # переподключения.
+    filename = "RadarShield"
+    if mz_userinfo:
+        import re as _re
+        m = _re.search(r"expire=(\d+)", mz_userinfo)
+        if m:
+            try:
+                expire_ts = int(m.group(1))
+                if expire_ts > 0:
+                    expire_str = datetime.fromtimestamp(expire_ts, tz=timezone.utc).strftime("%d.%m.%Y")
+                    filename = f"RadarShield-active-until-{expire_str}"
+                else:
+                    filename = "RadarShield-unlimited"
+            except Exception:
+                pass
 
     headers = {
-        "content-disposition": 'attachment; filename="RadarShield VPN"',
-        "profile-update-interval": "12",
-        "profile-web-page-url": pay_url,
-        "support-url": "https://t.me/radarshield_support_bot",
+        "content-disposition": f'attachment; filename="{filename}"',
     }
     if mz_userinfo:
         headers["subscription-userinfo"] = mz_userinfo
@@ -682,7 +707,7 @@ async def proxy_sub(token: str, request: Request):
 
         if not _is_active(user):
             return _captive_sub_response(tg_id, ua=request.headers.get("user-agent", ""))
-        return await _proxy_marzban_sub(user["subscription_url"], request, tg_id=tg_id)
+        return await _proxy_marzban_sub(user["subscription_url"], request)
 
     # --- Path 2: legacy Marzban-base64 ---
     # Декодируем имя из марзбановского токена. Пускаем только если:
