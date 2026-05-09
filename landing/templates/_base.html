@@ -76,6 +76,7 @@ function resetTurnstile() {
 </style>
 {% endif %}
 <link rel="stylesheet" href="/static/landing.css">
+<link rel="stylesheet" href="/static/support.css">
 
 {% block head_extra %}{% endblock %}
 </head>
@@ -97,7 +98,7 @@ function resetTurnstile() {
     </div>
     <div class="nav-cta">
       {% block nav_cta %}
-      <a class="btn btn-ghost" href="/#cta" style="padding:10px 14px;font-size:14px">Попробовать</a>
+      <a class="btn btn-ghost nav-cta-secondary" href="/#cta" style="padding:10px 14px;font-size:14px">Попробовать</a>
       <a class="btn btn-primary" href="/pay" style="padding:10px 16px;font-size:14px;margin-left:8px">Оплатить</a>
       {% endblock %}
     </div>
@@ -183,5 +184,6 @@ function resetTurnstile() {
 </footer>
 
 {% block body_end %}{% endblock %}
+<script src="/static/support.js" defer></script>
 </body>
 </html>
