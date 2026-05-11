@@ -1037,12 +1037,17 @@ async def _check_nodes_health(session: aiohttp.ClientSession) -> None:
                 await _send_alert(session, f"✅ Нода <b>{name}</b> снова connected.")
             continue
 
-        # status != connected — пытаемся починить через master API reconnect
-        logger.info(f"node {name} status={status}, trying reconnect")
-        try:
-            await marzban.reconnect_node(session, node_id)
-        except Exception as e:
-            logger.error(f"reconnect {name} failed: {e}")
+        # status != connected — пытаемся починить через master API reconnect.
+        # Кроме status=="connecting" — мастер уже сам тянет коннект, наш reconnect
+        # открывает конкурирующую сессию и роняет Xray core (incident 2026-05-10).
+        if status == "connecting":
+            logger.info(f"node {name} status=connecting, skip reconnect (let master finish)")
+        else:
+            logger.info(f"node {name} status={status}, trying reconnect")
+            try:
+                await marzban.reconnect_node(session, node_id)
+            except Exception as e:
+                logger.error(f"reconnect {name} failed: {e}")
 
         await asyncio.sleep(NODE_RECONNECT_WAIT)
 
