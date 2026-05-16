@@ -3,9 +3,6 @@
 {% block meta %}<meta name="description" content="Оплата подписки RadarShield по Telegram-логину">{% endblock %}
 
 {% block body %}
-{% if not manual %}
-<noscript><style>#rs-detecting{display:none!important}#pay-form-card,#pay-hint{display:block!important}</style></noscript>
-{% endif %}
 <section class="hero compact">
   <div class="hero-bg"></div>
   <div class="container" style="text-align:center;position:relative;z-index:2">
@@ -15,15 +12,7 @@
 </section>
 
 <div class="container" style="max-width:480px;padding-bottom:80px">
-  {% if not manual %}
-  <div id="rs-detecting" style="background:var(--panel);border:1px solid var(--line-2);border-radius:18px;padding:32px 24px;margin-top:32px;display:flex;align-items:center;justify-content:center;gap:14px;color:var(--ink-dim);font-size:15px">
-    <span style="width:20px;height:20px;border:2px solid var(--line-2);border-top-color:var(--accent);border-radius:50%;animation:sweep .8s linear infinite;flex:none"></span>
-    Определяем ваш аккаунт…
-  </div>
-  {% endif %}
-
-  <div id="pay-form-card"{% if not manual %} hidden{% endif %}
-       style="background:var(--panel);border:1px solid var(--line-2);border-radius:18px;padding:28px 24px;margin-top:32px">
+  <div style="background:var(--panel);border:1px solid var(--line-2);border-radius:18px;padding:28px 24px;margin-top:32px">
     <label for="tg-username" style="display:block;font-size:14px;color:var(--ink-dim);margin-bottom:10px">
       Telegram-логин
     </label>
@@ -47,8 +36,7 @@
     <p id="lookup-status" style="min-height:20px;margin:14px 0 0;color:var(--ink-mute);font-size:13.5px;line-height:1.5;text-align:center"></p>
   </div>
 
-  <p id="pay-hint"{% if not manual %} hidden{% endif %}
-     style="text-align:center;color:var(--ink-mute);font-size:13.5px;margin-top:24px">
+  <p style="text-align:center;color:var(--ink-mute);font-size:13.5px;margin-top:24px">
     Ещё не пользовался RadarShield?
     <a href="https://t.me/{{ bot_username }}" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600">
       Получи 7 дней бесплатно в боте →
@@ -61,50 +49,23 @@
 <script src="/static/link.js"></script>
 {% if not manual %}
 <script>
-// Автоопределение: если браузер уже привязан к аккаунту — сразу уводим на форму
-// оплаты с тарифами, без шага выбора аккаунта. Если не опознали — показываем
-// форму ручного ввода логина.
+// Автоопределение: опознанный браузер → сразу на тарифы (фоном, форма остаётся
+// видимой на случай, если whois ничего не найдёт). Новый браузер (нет
+// rs_device_id) нигде не привязан — whois для него заведомо пустой, не дёргаем.
 (function() {
-  var detecting = document.getElementById('rs-detecting');
-  var formCard = document.getElementById('pay-form-card');
-  var hint = document.getElementById('pay-hint');
-  var done = false;
-
-  function showForm() {
-    if (done) return;
-    done = true;
-    if (detecting) detecting.hidden = true;
-    if (formCard) formCard.hidden = false;
-    if (hint) hint.hidden = false;
-    var inp = document.getElementById('tg-username');
-    if (inp) inp.focus();
-  }
-
-  // Читаем уже существующий device_id напрямую — НЕ через rsBrowserId(),
-  // который сам создаёт новый id. Новый браузер ещё нигде не привязан,
-  // whois для него заведомо пустой → сразу показываем форму, без спиннера.
   var existingId = '';
   try { existingId = localStorage.getItem('rs_device_id') || ''; } catch (_) {}
-  if (!existingId) { showForm(); return; }
-
-  // Подстраховка: если whois завис — через 3с показываем форму вручную.
-  var safety = setTimeout(showForm, 3000);
-
+  if (!existingId) return;
   fetch('/api/whois?browser_id=' + encodeURIComponent(existingId))
     .then(function(r) { return r.ok ? r.json() : null; })
     .then(function(d) {
-      clearTimeout(safety);
-      if (done) return;
       var acc = d && d.found && d.accounts && d.accounts[0];
       if (acc && acc.username && acc.uid && acc.sig) {
-        done = true;
         window.location.replace('/pay?uid=' + encodeURIComponent(acc.uid) +
           '&sig=' + encodeURIComponent(acc.sig) + '&auto=1');
-        return;
       }
-      showForm();
     })
-    .catch(function() { clearTimeout(safety); showForm(); });
+    .catch(function() {});
 })();
 </script>
 {% endif %}
@@ -202,7 +163,7 @@
   input.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') lookup();
   });
-  {% if manual %}input.focus();{% endif %}
+  input.focus();
 })();
 </script>
 {% endblock %}
