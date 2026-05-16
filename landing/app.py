@@ -1053,12 +1053,15 @@ async def whois(request: Request, browser_id: str = "", fingerprint: str = ""):
 
 
 @app.get("/pay", response_class=HTMLResponse)
-async def pay_page(request: Request, uid: str = "", sig: str = ""):
+async def pay_page(request: Request, uid: str = "", sig: str = "",
+                   auto: str = "", manual: str = ""):
     if not uid or not sig or not _verify_pay_sig(uid, sig):
         # Без персональной ссылки — показываем форму поиска по @username.
+        # manual=1 — юзер сам пришёл сменить аккаунт, автоопределение пропускаем.
         return templates.TemplateResponse("pay-search.html", {
             **_page_context(request),
             "title": "Оплата подписки",
+            "manual": manual == "1",
         })
 
     if not CARD_PAYMENT_ENABLED or not await _acquiring_healthy():
@@ -1098,6 +1101,7 @@ async def pay_page(request: Request, uid: str = "", sig: str = ""):
         "sig": sig,
         "plans": plans_display,
         "username": username,
+        "auto": auto == "1",  # пришли автоопределением браузера → подпись «это вы»
     })
 
 

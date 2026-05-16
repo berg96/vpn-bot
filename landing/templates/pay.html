@@ -8,7 +8,10 @@
   <div class="container" style="text-align:center;position:relative;z-index:2">
     <h1>💳 Оплата подписки</h1>
     {% if username %}
-    <p style="color:var(--ink-dim);margin-top:12px;font-size:15px">Аккаунт: <b style="color:var(--accent)">@{{ username }}</b></p>
+    <p style="color:var(--ink-dim);margin-top:12px;font-size:15px">
+      {% if auto %}Мы определили, что это вы — {% else %}Аккаунт: {% endif %}<b style="color:var(--accent)">@{{ username }}</b>
+      <a href="#" id="rs-not-me" style="color:var(--ink-mute);font-size:13px;margin-left:8px;white-space:nowrap">не вы?</a>
+    </p>
     {% endif %}
     <p class="sub">Оплата картой — безопасно через Robokassa. Подписка активируется автоматически.</p>
   </div>
@@ -43,6 +46,25 @@
 (function() {
   var uid = {{ uid|tojson }};
   var sig = {{ sig|tojson }};
+
+  // «не вы?» — отвергаем распознанный аккаунт и уходим на ручной ввод логина.
+  var notMe = document.getElementById('rs-not-me');
+  if (notMe) {
+    notMe.addEventListener('click', function(e) {
+      e.preventDefault();
+      var go = function() { window.location.href = '/pay?manual=1'; };
+      var bid = window.rsBrowserId && window.rsBrowserId();
+      if (bid && uid) {
+        fetch('/api/link-browser/feedback', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({browser_id: bid, uid: uid, confirmed: -1}),
+        }).then(go, go);
+      } else {
+        go();
+      }
+    });
+  }
 
   document.querySelectorAll('.plan-pay').forEach(function(btn) {
     btn.addEventListener('click', async function() {

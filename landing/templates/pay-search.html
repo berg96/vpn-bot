@@ -3,6 +3,9 @@
 {% block meta %}<meta name="description" content="Оплата подписки RadarShield по Telegram-логину">{% endblock %}
 
 {% block body %}
+{% if not manual %}
+<noscript><style>#rs-detecting{display:none!important}#pay-form-card,#pay-hint{display:block!important}</style></noscript>
+{% endif %}
 <section class="hero compact">
   <div class="hero-bg"></div>
   <div class="container" style="text-align:center;position:relative;z-index:2">
@@ -12,8 +15,15 @@
 </section>
 
 <div class="container" style="max-width:480px;padding-bottom:80px">
-  <div id="rs-detected" hidden></div>
-  <div style="background:var(--panel);border:1px solid var(--line-2);border-radius:18px;padding:28px 24px;margin-top:32px">
+  {% if not manual %}
+  <div id="rs-detecting" style="background:var(--panel);border:1px solid var(--line-2);border-radius:18px;padding:32px 24px;margin-top:32px;display:flex;align-items:center;justify-content:center;gap:14px;color:var(--ink-dim);font-size:15px">
+    <span style="width:20px;height:20px;border:2px solid var(--line-2);border-top-color:var(--accent);border-radius:50%;animation:sweep .8s linear infinite;flex:none"></span>
+    Определяем ваш аккаунт…
+  </div>
+  {% endif %}
+
+  <div id="pay-form-card"{% if not manual %} hidden{% endif %}
+       style="background:var(--panel);border:1px solid var(--line-2);border-radius:18px;padding:28px 24px;margin-top:32px">
     <label for="tg-username" style="display:block;font-size:14px;color:var(--ink-dim);margin-bottom:10px">
       Telegram-логин
     </label>
@@ -37,7 +47,8 @@
     <p id="lookup-status" style="min-height:20px;margin:14px 0 0;color:var(--ink-mute);font-size:13.5px;line-height:1.5;text-align:center"></p>
   </div>
 
-  <p style="text-align:center;color:var(--ink-mute);font-size:13.5px;margin-top:24px">
+  <p id="pay-hint"{% if not manual %} hidden{% endif %}
+     style="text-align:center;color:var(--ink-mute);font-size:13.5px;margin-top:24px">
     Ещё не пользовался RadarShield?
     <a href="https://t.me/{{ bot_username }}" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600">
       Получи 7 дней бесплатно в боте →
@@ -48,54 +59,51 @@
 
 {% block body_end %}
 <script src="/static/link.js"></script>
+{% if not manual %}
 <script>
-// Автоопределение: если браузер уже привязан к аккаунту — предлагаем продлить его
-// сразу, без ввода логина.
+// Автоопределение: если браузер уже привязан к аккаунту — сразу уводим на форму
+// оплаты с тарифами, без шага выбора аккаунта. Если не опознали — показываем
+// форму ручного ввода логина.
 (function() {
-  var box = document.getElementById('rs-detected');
-  if (!box || !window.rsBrowserId) return;
-  var bid = window.rsBrowserId();
-  if (!bid) return;
+  var detecting = document.getElementById('rs-detecting');
+  var formCard = document.getElementById('pay-form-card');
+  var hint = document.getElementById('pay-hint');
+  var done = false;
+
+  function showForm() {
+    if (done) return;
+    done = true;
+    if (detecting) detecting.hidden = true;
+    if (formCard) formCard.hidden = false;
+    if (hint) hint.hidden = false;
+    var inp = document.getElementById('tg-username');
+    if (inp) inp.focus();
+  }
+
+  // Подстраховка: если whois завис — через 4с показываем форму вручную.
+  var safety = setTimeout(showForm, 4000);
+
+  var bid = window.rsBrowserId && window.rsBrowserId();
+  if (!bid) { clearTimeout(safety); showForm(); return; }
+
   fetch('/api/whois?browser_id=' + encodeURIComponent(bid))
     .then(function(r) { return r.ok ? r.json() : null; })
     .then(function(d) {
-      if (!d || !d.found || !d.accounts || !d.accounts.length) return;
-      var acc = d.accounts[0];
-      if (!acc.username) return;
-      var sub = '';
-      if (acc.sub) {
-        if (acc.sub.expired) sub = 'подписка истекла' + (acc.sub.until ? ' ' + acc.sub.until : '');
-        else if (acc.sub.active && acc.sub.until) sub = 'активна до ' + acc.sub.until;
-        else if (acc.sub.active) sub = 'подписка активна';
+      clearTimeout(safety);
+      if (done) return;
+      var acc = d && d.found && d.accounts && d.accounts[0];
+      if (acc && acc.username && acc.uid && acc.sig) {
+        done = true;
+        window.location.replace('/pay?uid=' + encodeURIComponent(acc.uid) +
+          '&sig=' + encodeURIComponent(acc.sig) + '&auto=1');
+        return;
       }
-      box.innerHTML =
-        '<div style="background:var(--panel);border:1px solid var(--accent);border-radius:16px;padding:18px 20px;margin-top:32px">' +
-          '<div style="font-size:15px;color:var(--ink);line-height:1.5">Похоже, это вы — ' +
-            '<b style="color:var(--accent)">@' + acc.username + '</b>' +
-            (sub ? ' <span style="color:var(--ink-mute);font-size:13px">· ' + sub + '</span>' : '') +
-          '</div>' +
-          '<div style="display:flex;gap:10px;margin-top:14px">' +
-            '<button id="rs-det-yes" class="btn btn-primary" style="flex:1;justify-content:center">Да, открыть оплату</button>' +
-            '<button id="rs-det-no" class="btn btn-ghost" style="justify-content:center">Не я</button>' +
-          '</div>' +
-        '</div>';
-      box.hidden = false;
-      document.getElementById('rs-det-yes').addEventListener('click', function() {
-        window.location.href = '/pay?uid=' + encodeURIComponent(acc.uid) +
-          '&sig=' + encodeURIComponent(acc.sig);
-      });
-      document.getElementById('rs-det-no').addEventListener('click', function() {
-        fetch('/api/link-browser/feedback', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ browser_id: bid, uid: acc.uid, confirmed: -1 }),
-        }).catch(function() {});
-        box.hidden = true;
-      });
+      showForm();
     })
-    .catch(function() {});
+    .catch(function() { clearTimeout(safety); showForm(); });
 })();
 </script>
+{% endif %}
 <script>
 (function() {
   var input = document.getElementById('tg-username');
@@ -190,7 +198,7 @@
   input.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') lookup();
   });
-  input.focus();
+  {% if manual %}input.focus();{% endif %}
 })();
 </script>
 {% endblock %}
