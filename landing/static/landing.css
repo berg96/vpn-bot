@@ -109,7 +109,14 @@ section{padding:var(--pad-y) 0;position:relative}
 @media (max-width: 980px){.platforms{grid-template-columns:repeat(2,1fr)}}
 .plat-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:28px;display:flex;flex-direction:column;gap:20px;min-height:220px;transition:border-color .2s ease,transform .2s ease,background .2s ease;position:relative;overflow:hidden}
 .plat-card:hover{border-color:var(--line-2);transform:translateY(-2px);background:var(--panel-2)}
-.plat-card.highlight{border-color:rgba(255,183,3,0.5);box-shadow:0 0 24px rgba(255,183,3,0.15)}
+.plat-card.highlight{border-color:var(--accent-2);background:linear-gradient(180deg,#ffc94d 0%,#e08f00 100%);color:#1a1208;transform:scale(1.05);z-index:2;box-shadow:0 16px 44px rgba(255,183,3,0.4)}
+.plat-card.highlight:hover{transform:scale(1.05) translateY(-3px);background:linear-gradient(180deg,#ffc94d 0%,#e08f00 100%)}
+.plat-card.highlight .plat-icon{background:rgba(0,0,0,0.13);border-color:rgba(0,0,0,0.18);color:#1a1208}
+.plat-card.highlight .plat-title{color:#1a1208}
+.plat-card.highlight .plat-meta{color:#1a1208;opacity:.75}
+.plat-card.highlight .plat-link{color:#1a1208;font-weight:700}
+.plat-badge{align-self:flex-start;font-family:'JetBrains Mono';font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;background:#1a1208;color:var(--accent);padding:5px 11px;border-radius:999px}
+.plat-note{font-size:12.5px;line-height:1.45;color:#3a2a08;font-weight:500}
 .plat-icon{width:48px;height:48px;border-radius:12px;background:rgba(255,255,255,0.04);display:grid;place-items:center;color:var(--ink);border:1px solid var(--line)}
 .plat-icon svg{width:24px;height:24px}
 .plat-title{font-family:'Manrope';font-weight:700;font-size:22px}

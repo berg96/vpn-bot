@@ -24,6 +24,16 @@
   var os = detectOS();
   if (os) {
     var card = document.querySelector('.plat-card[data-os="' + os + '"]');
-    if (card) card.classList.add('highlight');
+    if (card && !card.classList.contains('highlight')) {
+      card.classList.add('highlight');
+      var badge = document.createElement('span');
+      badge.className = 'plat-badge';
+      badge.textContent = '★ Рекомендуем';
+      card.insertBefore(badge, card.firstChild);
+      var note = document.createElement('span');
+      note.className = 'plat-note';
+      note.textContent = 'Мы определили вашу платформу — этот вариант подойдёт вам лучше всего.';
+      card.insertBefore(note, card.querySelector('.plat-link') || null);
+    }
   }
 })();
