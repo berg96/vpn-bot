@@ -202,7 +202,7 @@ async def _security_middleware(request: Request, call_next):
     # и inline-скрипты (наши формы).
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://openfpcdn.io; "
+        "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "font-src 'self' https://fonts.gstatic.com data:; "
         "img-src 'self' data: blob:; "

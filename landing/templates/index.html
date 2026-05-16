@@ -262,10 +262,18 @@
 
 {% block body_end %}
 <script src="/static/app.js"></script>
-<script src="https://openfpcdn.io/fingerprintjs/v4/iife.min.js" defer></script>
 <script>
+// FingerprintJS грузим динамически ПОСЛЕ события load. Статический <script>
+// (даже defer) задерживает событие load, если ресурс висит, — страница
+// «вечно грузится». Самохост (/static/fp.min.js, не сторонний CDN) + ленивая
+// инъекция: страница никогда не ждёт отпечаток, trial-форма работает и без
+// него (поле fingerprint просто уйдёт пустым).
 window.addEventListener('load', function() {
-  if (window.FingerprintJS) {
+  var s = document.createElement('script');
+  s.src = '/static/fp.min.js';
+  s.async = true;
+  s.onload = function() {
+    if (!window.FingerprintJS) return;
     FingerprintJS.load().then(function(fp) { return fp.get(); })
       .then(function(result) {
         document.querySelectorAll('#fingerprint, .fingerprint').forEach(function(el) {
@@ -273,7 +281,8 @@ window.addEventListener('load', function() {
         });
       })
       .catch(function(){});
-  }
+  };
+  document.head.appendChild(s);
 });
 
 // Race protection для всех trial-форм (hero и #cta).
