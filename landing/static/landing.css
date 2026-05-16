@@ -109,8 +109,8 @@ section{padding:var(--pad-y) 0;position:relative}
 @media (max-width: 980px){.platforms{grid-template-columns:repeat(2,1fr)}}
 .plat-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:28px;display:flex;flex-direction:column;gap:20px;min-height:220px;transition:border-color .2s ease,transform .2s ease,background .2s ease;position:relative;overflow:hidden}
 .plat-card:hover{border-color:var(--line-2);transform:translateY(-2px);background:var(--panel-2)}
-.plat-card.highlight{border-color:var(--accent-2);background:linear-gradient(180deg,#ffc94d 0%,#e08f00 100%);color:#1a1208;transform:scale(1.05);z-index:2;box-shadow:0 16px 44px rgba(255,183,3,0.4)}
-.plat-card.highlight:hover{transform:scale(1.05) translateY(-3px);background:linear-gradient(180deg,#ffc94d 0%,#e08f00 100%)}
+.plat-card.highlight{border-color:var(--accent);background:linear-gradient(180deg,#ffb703 0%,#c97f00 100%);color:#1a1208;transform:scale(1.05);z-index:2;box-shadow:0 16px 44px rgba(255,183,3,0.4)}
+.plat-card.highlight:hover{transform:scale(1.05) translateY(-3px);background:linear-gradient(180deg,#ffb703 0%,#c97f00 100%)}
 .plat-card.highlight .plat-icon{background:rgba(0,0,0,0.13);border-color:rgba(0,0,0,0.18);color:#1a1208}
 .plat-card.highlight .plat-title{color:#1a1208}
 .plat-card.highlight .plat-meta{color:#1a1208;opacity:.75}
