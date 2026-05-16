@@ -80,13 +80,17 @@
     if (inp) inp.focus();
   }
 
-  // Подстраховка: если whois завис — через 4с показываем форму вручную.
-  var safety = setTimeout(showForm, 4000);
+  // Читаем уже существующий device_id напрямую — НЕ через rsBrowserId(),
+  // который сам создаёт новый id. Новый браузер ещё нигде не привязан,
+  // whois для него заведомо пустой → сразу показываем форму, без спиннера.
+  var existingId = '';
+  try { existingId = localStorage.getItem('rs_device_id') || ''; } catch (_) {}
+  if (!existingId) { showForm(); return; }
 
-  var bid = window.rsBrowserId && window.rsBrowserId();
-  if (!bid) { clearTimeout(safety); showForm(); return; }
+  // Подстраховка: если whois завис — через 3с показываем форму вручную.
+  var safety = setTimeout(showForm, 3000);
 
-  fetch('/api/whois?browser_id=' + encodeURIComponent(bid))
+  fetch('/api/whois?browser_id=' + encodeURIComponent(existingId))
     .then(function(r) { return r.ok ? r.json() : null; })
     .then(function(d) {
       clearTimeout(safety);
