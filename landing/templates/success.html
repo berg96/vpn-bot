@@ -1,5 +1,5 @@
 {% extends "_base.html" %}
-{% block title %}Подписка активирована — RadarShield{% endblock %}
+{% block title %}Пробный период — RadarShield{% endblock %}
 {% block meta %}<meta name="description" content="Страница пробного периода">{% endblock %}
 
 {% block body %}
@@ -10,8 +10,8 @@
       <h1>✅ Пробный период использован</h1>
       <p class="sub">Актуальная ссылка на твою подписку — в <a href="https://t.me/{{ bot_username }}" target="_blank" rel="noopener" style="color:var(--accent)">боте</a> (команда /profile). Используй её.</p>
     {% elif active %}
-      <h1>🎉 Подписка активирована</h1>
-      <p class="sub">Вставь ссылку в клиент (FLClash / Karing).<br>
+      <h1>🎉 Пробный период активирован</h1>
+      <p class="sub">Осталось два шага — установить клиент и добавить ссылку. Всё ниже.<br>
       Действует до <b id="expires-local" data-iso="{{ expires_at.isoformat() }}">{{ expires_at.strftime('%d.%m.%Y %H:%M') }}</b><br>
       <span class="countdown-wrap">осталось: <b id="countdown">—</b></span></p>
     {% else %}
@@ -23,6 +23,53 @@
 
 {% if sub_url and active and not claimed %}
 <div class="container">
+
+  <!-- Шаг 1 — установить клиент. Ссылка подписки бесполезна без приложения. -->
+  <div class="section-head" style="margin-top:8px"><div>
+    <div class="section-tag">Шаг 1</div>
+    <h2>Установи приложение</h2>
+    <p class="lead">Ссылка подписки работает только внутри VPN-клиента. Скачай приложение под свою систему — это бесплатно:</p>
+  </div></div>
+  <div class="platforms">
+    <a class="plat-card" data-os="android" href="{{ downloads.flclash_android }}" target="_blank" rel="noopener nofollow">
+      <div class="plat-icon">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.6 9.48l1.84-3.18a.4.4 0 0 0-.15-.55.4.4 0 0 0-.54.15l-1.87 3.23a11.4 11.4 0 0 0-9.76 0L5.25 5.9a.4.4 0 0 0-.54-.15.4.4 0 0 0-.15.55l1.84 3.18A10.22 10.22 0 0 0 1 18h22a10.22 10.22 0 0 0-5.4-8.52zM7 15.25a1 1 0 1 1 0-2 1 1 0 0 1 0 2zm10 0a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/></svg>
+      </div>
+      <div><div class="plat-title">Android</div><div class="plat-meta">FLClash · APK</div></div>
+      <span class="plat-link">Скачать</span>
+    </a>
+    <a class="plat-card" data-os="ios" href="{{ downloads.karing_ios }}" target="_blank" rel="noopener nofollow">
+      <div class="plat-icon">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.5 12.5c0-2.8 2.3-4.1 2.4-4.2-1.3-1.9-3.3-2.2-4-2.2-1.7-.2-3.3 1-4.2 1-.9 0-2.2-1-3.6-1-1.8 0-3.6 1.1-4.5 2.7-2 3.4-.5 8.4 1.4 11.2.9 1.4 2 2.9 3.4 2.8 1.4 0 1.9-.9 3.5-.9 1.6 0 2.1.9 3.5.9 1.5 0 2.4-1.4 3.3-2.7 1-1.6 1.5-3.1 1.5-3.2 0 0-2.8-1.1-2.7-4.4zM14.8 4.3c.8-.9 1.3-2.2 1.2-3.5-1.1 0-2.5.7-3.3 1.6-.7.8-1.4 2.1-1.2 3.4 1.2.1 2.5-.6 3.3-1.5z"/></svg>
+      </div>
+      <div><div class="plat-title">iOS</div><div class="plat-meta">Karing · App Store</div></div>
+      <span class="plat-link">Скачать</span>
+    </a>
+    <a class="plat-card" data-os="windows" href="{{ downloads.flclash_windows }}" target="_blank" rel="noopener nofollow">
+      <div class="plat-icon">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.3l7.4-1V11H3V5.3zM3 18.7l7.4 1V13H3v5.7zM11.4 19.8L21 21V13h-9.6v6.8zM11.4 4.2V11H21V3l-9.6 1.2z"/></svg>
+      </div>
+      <div><div class="plat-title">Windows</div><div class="plat-meta">FLClash · .exe</div></div>
+      <span class="plat-link">Скачать</span>
+    </a>
+    <a class="plat-card" data-os="macos" href="{{ downloads.flclash_macos_arm }}" target="_blank" rel="noopener nofollow">
+      <div class="plat-icon">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.5 12.5c0-2.8 2.3-4.1 2.4-4.2-1.3-1.9-3.3-2.2-4-2.2-1.7-.2-3.3 1-4.2 1-.9 0-2.2-1-3.6-1-1.8 0-3.6 1.1-4.5 2.7-2 3.4-.5 8.4 1.4 11.2.9 1.4 2 2.9 3.4 2.8 1.4 0 1.9-.9 3.5-.9 1.6 0 2.1.9 3.5.9 1.5 0 2.4-1.4 3.3-2.7 1-1.6 1.5-3.1 1.5-3.2 0 0-2.8-1.1-2.7-4.4zM14.8 4.3c.8-.9 1.3-2.2 1.2-3.5-1.1 0-2.5.7-3.3 1.6-.7.8-1.4 2.1-1.2 3.4 1.2.1 2.5-.6 3.3-1.5z"/></svg>
+      </div>
+      <div><div class="plat-title">macOS</div><div class="plat-meta">FLClash · M-серия и Intel</div></div>
+      <span class="plat-link">Скачать</span>
+    </a>
+  </div>
+
+  <!-- Шаг 2 — добавить ссылку подписки в установленный клиент. -->
+  <div class="section-head" style="margin-top:56px"><div>
+    <div class="section-tag">Шаг 2</div>
+    <h2>Добавь ссылку подписки в клиент</h2>
+    <p class="lead">Открой установленное приложение и импортируй подписку по ссылке:
+    <b>+</b> → <b>Import from URL</b> (в Karing на iOS — <b>Импорт из буфера обмена</b>).
+    Вставь ссылку ниже и нажми <b>Connect</b>. Подробная инструкция со скриншотами — скоро.</p>
+  </div></div>
+
   <div class="install-shortcut">
     <button type="button" class="btn btn-primary btn-lg install-cta mobile-only" onclick="window.open('/i/{{ token }}','_blank')">
       📲 Открыть в приложении
@@ -58,17 +105,6 @@
   </section>
   {% endif %}
 </div>
-
-<section id="how" class="how">
-  <div class="container">
-    <div class="section-head"><div><div class="section-tag">Как подключить</div><h2>Три шага.</h2></div></div>
-    <div class="steps steps-3">
-      <div class="step"><div class="step-num">Шаг 01</div><div class="step-title">Скачай клиент</div><div class="step-body">FLClash для Android/Windows/macOS или Karing для iOS (ссылки в футере /#platforms).</div></div>
-      <div class="step"><div class="step-num">Шаг 02</div><div class="step-title">Открой клиент</div><div class="step-body">Нажми <b>+</b> → <b>Import from URL</b>. В Karing (iOS) — <b>Импорт из буфера обмена</b>.</div></div>
-      <div class="step"><div class="step-num">Шаг 03</div><div class="step-title">Вставь ссылку</div><div class="step-body">Скопируй ссылку выше → вставь → нажми <b>Connect</b>. Готово.</div></div>
-    </div>
-  </div>
-</section>
 {% endblock %}
 
 {% block body_end %}
