@@ -12,6 +12,7 @@
   var LS_PROMO_SEEN = 'rs_chat_promo_seen_v1';
   var LS_LAST_OP = 'rs_chat_last_op_v1';     // последний preview op-сообщения для бабла
   var LS_WELCOME_SEEN = 'rs_chat_welcome_v1'; // virtual «1 непрочитанное приветствие»
+  var LS_IDENTITY_ACK = 'rs_chat_identity_ack_v1'; // uid, по которому юзер уже ответил «это я»
   var SS_PROMO_ACTIVE = 'rs_chat_promo_active_v1'; // sessionStorage: промо ещё «живёт» между переходами
   var MAX_HISTORY = 200;
   var MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
@@ -39,6 +40,23 @@
       (location.protocol === 'https:' ? '; Secure' : '');
   }
 
+  // browser_id = тот же rs_device_id, что лендинг кладёт в localStorage и
+  // сохраняет на лиде. Через него vpn-bot /api/whois узнаёт аккаунт юзера.
+  function browserId() {
+    var k = 'rs_device_id';
+    var v = '';
+    try { v = localStorage.getItem(k) || ''; } catch (_) {}
+    if (!v) {
+      try {
+        v = ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, function (c) {
+          return (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4)).toString(16);
+        });
+        localStorage.setItem(k, v);
+      } catch (_) {}
+    }
+    return v;
+  }
+
   function loadHistory() {
     try { return JSON.parse(localStorage.getItem(LS_HISTORY) || '[]'); }
     catch (_) { return []; }
@@ -58,7 +76,7 @@
   }
 
   // ── DOM ───────────────────────────────────────────────────────────────────
-  var fab, panel, body, input, sendBtn, attachBtn, fileInput, pendingHost, badge, statusDot, promo, foot, closeCard;
+  var fab, panel, body, input, sendBtn, attachBtn, fileInput, pendingHost, badge, statusDot, promo, foot, closeCard, identityStrip;
   var pendingFiles = []; // [{file, localUrl, isImage, el}]
   var chatKey = '';
   var es = null;
@@ -67,6 +85,7 @@
   var promoTimers = [];
   var ratingValue = 0;
   var threadClosed = false;
+  var identity = null; // {uid, username, acked} — распознанный по browser_id аккаунт
 
   function buildDOM() {
     fab = document.createElement('button');
@@ -114,6 +133,7 @@
           '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>' +
         '</button>' +
       '</div>' +
+      '<div class="rs-identity-strip"></div>' +
       '<div class="rs-chat-body" aria-live="polite"></div>' +
       '<div class="rs-chat-close-card">' +
         '<h5>Спасибо за обращение!</h5>' +
@@ -139,6 +159,7 @@
     document.body.appendChild(panel);
 
     body = panel.querySelector('.rs-chat-body');
+    identityStrip = panel.querySelector('.rs-identity-strip');
     input = panel.querySelector('.rs-chat-input');
     sendBtn = panel.querySelector('.rs-chat-send');
     attachBtn = panel.querySelector('.rs-chat-attach');
@@ -291,6 +312,8 @@
       text = '✉️ Поддержка ответила: ' + truncate(lastOp, OP_PREVIEW_CHARS);
     } else if (isPromoSnoozed()) {
       return;
+    } else if (identity && identity.username) {
+      text = 'Поможем с подпиской @' + identity.username + ' — пишите!';
     } else {
       text = PROMO_TEXT;
     }
@@ -608,6 +631,62 @@
     requestAnimationFrame(function () { body.scrollTop = body.scrollHeight; });
   }
 
+  // ── Identity (распознавание аккаунта по browser_id) ───────────────────────
+  function fetchIdentity() {
+    var bid = browserId();
+    if (!bid) return Promise.resolve();
+    return fetch('/api/whois?browser_id=' + encodeURIComponent(bid))
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d || !d.found || !d.accounts || !d.accounts.length) return;
+        var acc = d.accounts[0];
+        if (!acc.username) return;
+        var acked = acc.confirmed === 1;
+        try { acked = acked || localStorage.getItem(LS_IDENTITY_ACK) === String(acc.uid); }
+        catch (_) {}
+        identity = { uid: acc.uid, username: acc.username, acked: acked };
+      })
+      .catch(function () {});
+  }
+
+  function renderIdentityStrip() {
+    if (!identityStrip) return;
+    if (!identity || identity.acked) {
+      identityStrip.classList.remove('is-on');
+      return;
+    }
+    identityStrip.innerHTML =
+      '<span class="rs-id-q">Вопрос по аккаунту <b>@' + identity.username + '</b>?</span>' +
+      '<div class="rs-id-btns">' +
+        '<button class="rs-id-yes" type="button">Да, это я</button>' +
+        '<button class="rs-id-no" type="button">Нет</button>' +
+      '</div>';
+    identityStrip.classList.add('is-on');
+    identityStrip.querySelector('.rs-id-yes')
+      .addEventListener('click', function () { identityFeedback(1); });
+    identityStrip.querySelector('.rs-id-no')
+      .addEventListener('click', function () { identityFeedback(-1); });
+  }
+
+  function identityFeedback(confirmed) {
+    if (!identity) return;
+    var uid = identity.uid;
+    var uname = identity.username;
+    fetch('/api/link-browser/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ browser_id: browserId(), uid: uid, confirmed: confirmed }),
+    }).catch(function () {});
+    if (identityStrip) identityStrip.classList.remove('is-on');
+    if (confirmed === 1) {
+      try { localStorage.setItem(LS_IDENTITY_ACK, String(uid)); } catch (_) {}
+      identity.acked = true;
+      pushSys('Спасибо! Будем знать, что вопрос по аккаунту @' + uname + '.');
+    } else {
+      identity = null;
+    }
+  }
+
   // ── API ───────────────────────────────────────────────────────────────────
   function apiInit() {
     var existing = getCookie(COOKIE_KEY);
@@ -631,7 +710,7 @@
     return fetch(API_BASE + '/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_key: chatKey, text: text }),
+      body: JSON.stringify({ chat_key: chatKey, text: text, browser_id: browserId() }),
     }).then(function (r) {
       if (!r.ok) throw new Error('send ' + r.status);
       return r.json();
@@ -752,6 +831,8 @@
       else setStatus(true);
       if (threadClosed) showCloseCard();
     }
+    if (identity) renderIdentityStrip();
+    else fetchIdentity().then(renderIdentityStrip);
     setTimeout(function () {
       if (!threadClosed) input && input.focus();
     }, 80);
@@ -902,6 +983,7 @@
 
     var fd = new FormData();
     fd.append('chat_key', chatKey);
+    fd.append('browser_id', browserId());
     if (caption) fd.append('caption', caption);
     entries.forEach(function (e) { fd.append('file', e.file, e.file.name); });
 
@@ -950,6 +1032,7 @@
 
     var fd = new FormData();
     fd.append('chat_key', chatKey);
+    fd.append('browser_id', browserId());
     fd.append('file', f);
     if (caption) fd.append('caption', caption);
 
@@ -993,6 +1076,8 @@
       // даже когда панель ещё закрыта (бейджик непрочитанных).
       apiInit().then(function () { openStream(); }).catch(function () {});
     }
+    // Распознаём аккаунт по browser_id — для текста облачка и полоски «это вы?».
+    fetchIdentity();
     schedulePromo();
   }
 

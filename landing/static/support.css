@@ -593,3 +593,32 @@
   .rs-lb-next { right: 4px; }
   .rs-lb-header { padding: 10px 12px; }
 }
+
+/* Identity strip — «Вопрос по аккаунту @user?» (Этап 4) */
+.rs-identity-strip {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  background: rgba(255,183,3,0.07);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  font: 13px/1.4 Inter,system-ui,sans-serif;
+}
+.rs-identity-strip.is-on { display: flex; }
+.rs-id-q { color: #eef3f9; }
+.rs-id-q b { color: #ffb703; }
+.rs-id-btns { display: flex; gap: 6px; margin-left: auto; }
+.rs-id-yes, .rs-id-no {
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  padding: 5px 11px;
+  font: 600 12.5px/1 Inter,system-ui,sans-serif;
+  cursor: pointer;
+  transition: background .12s ease;
+}
+.rs-id-yes { color: #83d043; }
+.rs-id-yes:hover { background: rgba(131,208,67,0.12); }
+.rs-id-no { color: #ef6b6b; }
+.rs-id-no:hover { background: rgba(239,107,107,0.12); }
