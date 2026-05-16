@@ -23,7 +23,7 @@
   }
   var os = detectOS();
   if (os) {
-    var card = document.querySelector('.app-card[data-os="' + os + '"]');
+    var card = document.querySelector('.plat-card[data-os="' + os + '"]');
     if (card) card.classList.add('highlight');
   }
 })();
