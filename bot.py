@@ -302,6 +302,15 @@ async def _handle_landing_deeplink(msg: Message, token: str) -> None:
     first_name = msg.from_user.first_name
 
     lead = db.get_landing_lead(token)
+
+    # Этап 4: тихо связываем браузер этого лида с TG-аккаунтом. Лендинг сохранил
+    # на лиде device_id браузера — здесь известен tg_id, можно записать пару.
+    if lead and lead.get("device_id"):
+        try:
+            db.link_browser(lead["device_id"], tg_id, lead.get("fingerprint"), "trial_deeplink")
+        except Exception as e:
+            logger.error(f"link_browser failed for {tg_id}: {e}")
+
     if not lead or lead["claimed_tg_id"] is not None:
         await _do_start(tg_id, username, first_name, msg.answer)
         return

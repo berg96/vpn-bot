@@ -285,6 +285,22 @@ def _is_lead_active(lead: dict) -> bool:
     return datetime.fromisoformat(lead["expires_at"]) > datetime.now(timezone.utc)
 
 
+def _sub_summary(u: dict) -> dict:
+    """Краткий статус подписки из Marzban-объекта юзера — для /api/whois."""
+    status = u.get("status")
+    expire = u.get("expire") or 0
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    until = None
+    if expire:
+        until = datetime.fromtimestamp(expire, timezone.utc).strftime("%d.%m.%Y")
+    return {
+        "active": status == "active",
+        "status": status,
+        "until": until,
+        "expired": bool(expire and expire < now_ts),
+    }
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     existing_token = request.cookies.get("lp_token")
@@ -803,8 +819,13 @@ async def open_app(request: Request, token: str):
     """
     tg_id = sub_tokens.parse_sub_token(token)
     sub_url: str | None = None
+    link_uid: str | None = None
+    link_sig: str | None = None
     if tg_id is not None and db.get_mz_username(tg_id):
         sub_url = f"https://radarshield.mooo.com/sub/{token}"
+        # Страница открыта из бота — tg_id известен, тихо привязываем браузер.
+        link_uid = str(tg_id)
+        link_sig = _make_pay_sig(link_uid)
 
     if not sub_url:
         sub_url = "https://radarshield.mooo.com/sub/expired"
@@ -816,6 +837,8 @@ async def open_app(request: Request, token: str):
         "downloads": APP_DOWNLOADS,
         "bot_username": BOT_USERNAME,
         "support_username": SUPPORT_USERNAME,
+        "link_uid": link_uid,
+        "link_sig": link_sig,
     })
 
 
@@ -941,6 +964,92 @@ async def user_lookup(request: Request):
         "username": user["username"],
         "redirect_url": f"/pay?uid={uid}&sig={_make_pay_sig(uid)}",
     }
+
+
+# ── Browser ↔ account linking (Этап 4 support-чата) ──────────────────────────
+
+@app.post("/api/link-browser")
+@limiter.limit("30/minute")
+async def link_browser(request: Request):
+    """Тихая фоновая привязка браузера к TG-аккаунту. Вызывается со страниц,
+    открытых из бота (/pay, /open) — там tg_id известен и подписан HMAC.
+    Браузер передаёт свой стабильный browser_id + подписанный uid."""
+    try:
+        data = await request.json()
+    except Exception:
+        return {"error": "bad_request"}
+    browser_id = str(data.get("browser_id", "")).strip()[:64]
+    uid = str(data.get("uid", "")).strip()
+    sig = str(data.get("sig", "")).strip()
+    fingerprint = str(data.get("fingerprint", "")).strip()[:128] or None
+    source = str(data.get("source", "page"))[:32]
+    if not browser_id or not uid or not sig:
+        return {"error": "bad_request"}
+    if not _verify_pay_sig(uid, sig):
+        return {"error": "bad_sig"}
+    try:
+        db.link_browser(browser_id, int(uid), fingerprint, source)
+    except (ValueError, TypeError):
+        return {"error": "bad_uid"}
+    return {"ok": True}
+
+
+@app.post("/api/link-browser/feedback")
+@limiter.limit("30/minute")
+async def link_browser_feedback(request: Request):
+    """Юзер подтвердил/отверг распознанный аккаунт (кнопки «это я» / «не я»)."""
+    try:
+        data = await request.json()
+    except Exception:
+        return {"error": "bad_request"}
+    browser_id = str(data.get("browser_id", "")).strip()[:64]
+    uid = str(data.get("uid", "")).strip()
+    confirmed = data.get("confirmed")
+    if not browser_id or not uid or confirmed not in (1, -1):
+        return {"error": "bad_request"}
+    try:
+        db.set_browser_link_confirmed(browser_id, int(uid), int(confirmed))
+    except (ValueError, TypeError):
+        return {"error": "bad_uid"}
+    return {"ok": True}
+
+
+@app.get("/api/whois")
+@limiter.limit("30/minute")
+async def whois(request: Request, browser_id: str = "", fingerprint: str = ""):
+    """Кто стоит за этим браузером. Ключ — browser_id (неугадываемый токен),
+    поэтому открытый доступ безопасен: знать чужой browser_id неоткуда.
+    Используется автоопределением на /pay и support-виджетом."""
+    browser_id = (browser_id or "").strip()[:64]
+    fingerprint = (fingerprint or "").strip()[:128] or None
+    if not browser_id and not fingerprint:
+        return {"found": False}
+    accounts = db.get_browser_accounts(browser_id, fingerprint)
+    if not accounts:
+        return {"found": False}
+    out = []
+    async with aiohttp.ClientSession() as s:
+        for acc in accounts[:5]:
+            tg_id = acc["tg_id"]
+            username = db.get_username_by_tg_id(tg_id)
+            mz = db.get_mz_username(tg_id)
+            sub = None
+            if mz:
+                try:
+                    u = await marzban.get_user(s, tg_id, mz)
+                    if u:
+                        sub = _sub_summary(u)
+                except Exception as e:
+                    logger.warning(f"whois marzban lookup failed for {tg_id}: {e}")
+            out.append({
+                "tg_id": tg_id,
+                "username": username,
+                "confirmed": acc["confirmed"],
+                "uid": str(tg_id),
+                "sig": _make_pay_sig(str(tg_id)),
+                "sub": sub,
+            })
+    return {"found": True, "accounts": out}
 
 
 @app.get("/pay", response_class=HTMLResponse)

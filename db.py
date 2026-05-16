@@ -84,6 +84,25 @@ def init_db():
             c.execute("ALTER TABLE landing_leads ADD COLUMN sub_url TEXT")
         except Exception:
             pass
+        # Привязка браузера к Telegram-аккаунту (Этап 4 support-чата).
+        # browser_id — стабильный localStorage-токен браузера (rs_device_id);
+        # fingerprint — резервный матч, если localStorage очищен.
+        # Many-to-many: один юзер заходит с нескольких браузеров.
+        # confirmed: 0 — привязка предполагается, 1 — юзер подтвердил, -1 — отверг.
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS browser_links (
+                browser_id  TEXT NOT NULL,
+                tg_id       INTEGER NOT NULL,
+                fingerprint TEXT,
+                source      TEXT,
+                confirmed   INTEGER NOT NULL DEFAULT 0,
+                linked_at   TEXT NOT NULL,
+                PRIMARY KEY (browser_id, tg_id)
+            )
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS ix_browser_links_bid ON browser_links(browser_id)")
+        c.execute("CREATE INDEX IF NOT EXISTS ix_browser_links_fp ON browser_links(fingerprint)")
+        c.execute("CREATE INDEX IF NOT EXISTS ix_browser_links_tg ON browser_links(tg_id)")
         # Tinkoff rub-платежи: pending → confirmed/rejected. Webhook из Т-Банка сверяется с order_id.
         c.execute("""
             CREATE TABLE IF NOT EXISTS tinkoff_payments (
@@ -500,6 +519,64 @@ def delete_landing_lead(token: str) -> None:
 def set_landing_sub_url(token: str, sub_url: str) -> None:
     with _conn() as c:
         c.execute("UPDATE landing_leads SET sub_url=? WHERE token=?", (sub_url, token))
+
+
+# ── Browser ↔ account links (Этап 4 support-чата) ────────────────────────────
+
+def link_browser(browser_id: str, tg_id: int, fingerprint: str | None = None,
+                  source: str | None = None) -> None:
+    """Привязывает браузер к Telegram-аккаунту. Идемпотентно: повторный вызов
+    обновляет fingerprint/source/linked_at, но НЕ трогает confirmed — выбор
+    пользователя («это я» / «не я») сохраняется."""
+    if not browser_id or not tg_id:
+        return
+    with _conn() as c:
+        cur = c.execute(
+            "UPDATE browser_links SET fingerprint=COALESCE(?, fingerprint), "
+            "source=COALESCE(?, source), linked_at=? WHERE browser_id=? AND tg_id=?",
+            (fingerprint, source, _now_iso(), browser_id, tg_id),
+        )
+        if cur.rowcount == 0:
+            c.execute(
+                "INSERT INTO browser_links "
+                "(browser_id, tg_id, fingerprint, source, confirmed, linked_at) "
+                "VALUES (?, ?, ?, ?, 0, ?)",
+                (browser_id, tg_id, fingerprint, source, _now_iso()),
+            )
+
+
+def set_browser_link_confirmed(browser_id: str, tg_id: int, confirmed: int) -> bool:
+    """confirmed: 1 — юзер подтвердил «это я», -1 — «это не я». True если строка изменилась."""
+    with _conn() as c:
+        cur = c.execute(
+            "UPDATE browser_links SET confirmed=? WHERE browser_id=? AND tg_id=?",
+            (confirmed, browser_id, tg_id),
+        )
+        return cur.rowcount > 0
+
+
+def get_browser_accounts(browser_id: str, fingerprint: str | None = None) -> list[dict]:
+    """Аккаунты, привязанные к браузеру. Сначала точный матч по browser_id,
+    при пустом результате — резервный по fingerprint. Отвергнутые (confirmed=-1)
+    исключаются. Подтверждённые и свежие — первыми."""
+    rows: list = []
+    with _conn() as c:
+        if browser_id:
+            rows = c.execute(
+                "SELECT tg_id, confirmed, source, linked_at FROM browser_links "
+                "WHERE browser_id=? AND confirmed != -1 "
+                "ORDER BY confirmed DESC, linked_at DESC",
+                (browser_id,),
+            ).fetchall()
+        if not rows and fingerprint:
+            rows = c.execute(
+                "SELECT tg_id, confirmed, source, linked_at FROM browser_links "
+                "WHERE fingerprint=? AND confirmed != -1 "
+                "ORDER BY confirmed DESC, linked_at DESC",
+                (fingerprint,),
+            ).fetchall()
+    return [{"tg_id": r[0], "confirmed": r[1], "source": r[2], "linked_at": r[3]}
+            for r in rows]
 
 
 def record_tinkoff_pending(

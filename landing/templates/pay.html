@@ -37,6 +37,8 @@
 {% endblock %}
 
 {% block body_end %}
+<script>window.RS_LINK = {uid: {{ uid|tojson }}, sig: {{ sig|tojson }}, source: 'pay'};</script>
+<script src="/static/link.js"></script>
 <script>
 (function() {
   var uid = {{ uid|tojson }};

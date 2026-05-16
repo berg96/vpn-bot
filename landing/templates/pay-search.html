@@ -12,6 +12,7 @@
 </section>
 
 <div class="container" style="max-width:480px;padding-bottom:80px">
+  <div id="rs-detected" hidden></div>
   <div style="background:var(--panel);border:1px solid var(--line-2);border-radius:18px;padding:28px 24px;margin-top:32px">
     <label for="tg-username" style="display:block;font-size:14px;color:var(--ink-dim);margin-bottom:10px">
       Telegram-логин
@@ -46,6 +47,55 @@
 {% endblock %}
 
 {% block body_end %}
+<script src="/static/link.js"></script>
+<script>
+// Автоопределение: если браузер уже привязан к аккаунту — предлагаем продлить его
+// сразу, без ввода логина.
+(function() {
+  var box = document.getElementById('rs-detected');
+  if (!box || !window.rsBrowserId) return;
+  var bid = window.rsBrowserId();
+  if (!bid) return;
+  fetch('/api/whois?browser_id=' + encodeURIComponent(bid))
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(d) {
+      if (!d || !d.found || !d.accounts || !d.accounts.length) return;
+      var acc = d.accounts[0];
+      if (!acc.username) return;
+      var sub = '';
+      if (acc.sub) {
+        if (acc.sub.expired) sub = 'подписка истекла' + (acc.sub.until ? ' ' + acc.sub.until : '');
+        else if (acc.sub.active && acc.sub.until) sub = 'активна до ' + acc.sub.until;
+        else if (acc.sub.active) sub = 'подписка активна';
+      }
+      box.innerHTML =
+        '<div style="background:var(--panel);border:1px solid var(--accent);border-radius:16px;padding:18px 20px;margin-top:32px">' +
+          '<div style="font-size:15px;color:var(--ink);line-height:1.5">Похоже, это вы — ' +
+            '<b style="color:var(--accent)">@' + acc.username + '</b>' +
+            (sub ? ' <span style="color:var(--ink-mute);font-size:13px">· ' + sub + '</span>' : '') +
+          '</div>' +
+          '<div style="display:flex;gap:10px;margin-top:14px">' +
+            '<button id="rs-det-yes" class="btn btn-primary" style="flex:1;justify-content:center">Да, открыть оплату</button>' +
+            '<button id="rs-det-no" class="btn btn-ghost" style="justify-content:center">Не я</button>' +
+          '</div>' +
+        '</div>';
+      box.hidden = false;
+      document.getElementById('rs-det-yes').addEventListener('click', function() {
+        window.location.href = '/pay?uid=' + encodeURIComponent(acc.uid) +
+          '&sig=' + encodeURIComponent(acc.sig);
+      });
+      document.getElementById('rs-det-no').addEventListener('click', function() {
+        fetch('/api/link-browser/feedback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ browser_id: bid, uid: acc.uid, confirmed: -1 }),
+        }).catch(function() {});
+        box.hidden = true;
+      });
+    })
+    .catch(function() {});
+})();
+</script>
 <script>
 (function() {
   var input = document.getElementById('tg-username');
