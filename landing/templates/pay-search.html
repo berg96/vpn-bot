@@ -60,7 +60,9 @@
     .then(function(r) { return r.ok ? r.json() : null; })
     .then(function(d) {
       var acc = d && d.found && d.accounts && d.accounts[0];
-      if (acc && acc.username && acc.uid && acc.sig) {
+      // username может отсутствовать (у юзера нет TG-логина) — для редиректа
+      // нужны только uid+sig, по ним /pay откроет тарифы.
+      if (acc && acc.uid && acc.sig) {
         window.location.replace('/pay?uid=' + encodeURIComponent(acc.uid) +
           '&sig=' + encodeURIComponent(acc.sig) + '&auto=1');
       }
