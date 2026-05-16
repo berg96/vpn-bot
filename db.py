@@ -526,9 +526,11 @@ def set_landing_sub_url(token: str, sub_url: str) -> None:
 def link_browser(browser_id: str, tg_id: int, fingerprint: str | None = None,
                   source: str | None = None) -> None:
     """Привязывает браузер к Telegram-аккаунту (один браузер — один аккаунт).
-    Повторный вызов с тем же аккаунтом обновляет fingerprint/source/linked_at и
-    сохраняет confirmed (выбор «это я» / «не я» не сбрасывается). Привязка к
-    ДРУГОМУ аккаунту перезаписывает строку и сбрасывает confirmed — спросим заново."""
+    Повторный вызов с тем же аккаунтом обновляет fingerprint/source/linked_at;
+    confirmed=MAX(confirmed,0) — «это я» (1) сохраняется, а «не я» (-1) снимается:
+    осознанный повторный заход из бота на свой аккаунт отменяет прошлый отказ
+    (юзер мог нажать «не я», оплачивая чужой аккаунт, и вернуться к своему).
+    Привязка к ДРУГОМУ аккаунту перезаписывает строку и сбрасывает confirmed."""
     if not browser_id or not tg_id:
         return
     with _conn() as c:
@@ -545,7 +547,8 @@ def link_browser(browser_id: str, tg_id: int, fingerprint: str | None = None,
         elif row[0] == tg_id:
             c.execute(
                 "UPDATE browser_links SET fingerprint=COALESCE(?, fingerprint), "
-                "source=COALESCE(?, source), linked_at=? WHERE browser_id=?",
+                "source=COALESCE(?, source), linked_at=?, "
+                "confirmed=MAX(confirmed, 0) WHERE browser_id=?",
                 (fingerprint, source, _now_iso(), browser_id),
             )
         else:
