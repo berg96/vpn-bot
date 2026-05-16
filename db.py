@@ -87,20 +87,20 @@ def init_db():
         # Привязка браузера к Telegram-аккаунту (Этап 4 support-чата).
         # browser_id — стабильный localStorage-токен браузера (rs_device_id);
         # fingerprint — резервный матч, если localStorage очищен.
-        # Many-to-many: один юзер заходит с нескольких браузеров.
+        # Один браузер = один аккаунт (browser_id — PK); привязка к другому
+        # аккаунту перезаписывает старую. Связь юзер→браузеры остаётся one-to-many
+        # (несколько строк с одним tg_id, разными browser_id).
         # confirmed: 0 — привязка предполагается, 1 — юзер подтвердил, -1 — отверг.
         c.execute("""
             CREATE TABLE IF NOT EXISTS browser_links (
-                browser_id  TEXT NOT NULL,
+                browser_id  TEXT PRIMARY KEY,
                 tg_id       INTEGER NOT NULL,
                 fingerprint TEXT,
                 source      TEXT,
                 confirmed   INTEGER NOT NULL DEFAULT 0,
-                linked_at   TEXT NOT NULL,
-                PRIMARY KEY (browser_id, tg_id)
+                linked_at   TEXT NOT NULL
             )
         """)
-        c.execute("CREATE INDEX IF NOT EXISTS ix_browser_links_bid ON browser_links(browser_id)")
         c.execute("CREATE INDEX IF NOT EXISTS ix_browser_links_fp ON browser_links(fingerprint)")
         c.execute("CREATE INDEX IF NOT EXISTS ix_browser_links_tg ON browser_links(tg_id)")
         # Tinkoff rub-платежи: pending → confirmed/rejected. Webhook из Т-Банка сверяется с order_id.
@@ -525,23 +525,34 @@ def set_landing_sub_url(token: str, sub_url: str) -> None:
 
 def link_browser(browser_id: str, tg_id: int, fingerprint: str | None = None,
                   source: str | None = None) -> None:
-    """Привязывает браузер к Telegram-аккаунту. Идемпотентно: повторный вызов
-    обновляет fingerprint/source/linked_at, но НЕ трогает confirmed — выбор
-    пользователя («это я» / «не я») сохраняется."""
+    """Привязывает браузер к Telegram-аккаунту (один браузер — один аккаунт).
+    Повторный вызов с тем же аккаунтом обновляет fingerprint/source/linked_at и
+    сохраняет confirmed (выбор «это я» / «не я» не сбрасывается). Привязка к
+    ДРУГОМУ аккаунту перезаписывает строку и сбрасывает confirmed — спросим заново."""
     if not browser_id or not tg_id:
         return
     with _conn() as c:
-        cur = c.execute(
-            "UPDATE browser_links SET fingerprint=COALESCE(?, fingerprint), "
-            "source=COALESCE(?, source), linked_at=? WHERE browser_id=? AND tg_id=?",
-            (fingerprint, source, _now_iso(), browser_id, tg_id),
-        )
-        if cur.rowcount == 0:
+        row = c.execute(
+            "SELECT tg_id FROM browser_links WHERE browser_id=?", (browser_id,)
+        ).fetchone()
+        if row is None:
             c.execute(
                 "INSERT INTO browser_links "
                 "(browser_id, tg_id, fingerprint, source, confirmed, linked_at) "
                 "VALUES (?, ?, ?, ?, 0, ?)",
                 (browser_id, tg_id, fingerprint, source, _now_iso()),
+            )
+        elif row[0] == tg_id:
+            c.execute(
+                "UPDATE browser_links SET fingerprint=COALESCE(?, fingerprint), "
+                "source=COALESCE(?, source), linked_at=? WHERE browser_id=?",
+                (fingerprint, source, _now_iso(), browser_id),
+            )
+        else:
+            c.execute(
+                "UPDATE browser_links SET tg_id=?, fingerprint=?, source=?, "
+                "confirmed=0, linked_at=? WHERE browser_id=?",
+                (tg_id, fingerprint, source, _now_iso(), browser_id),
             )
 
 
