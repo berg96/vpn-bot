@@ -1027,6 +1027,10 @@ async def whois(request: Request, browser_id: str = "", fingerprint: str = ""):
     accounts = db.get_browser_accounts(browser_id, fingerprint)
     if not accounts:
         return {"found": False}
+    # «Основной» аккаунт браузера = тот, к которому браузер был привязан
+    # РАНЬШЕ всех (min linked_at, среди не-отвергнутых). Используется support-bot
+    # для объединения web-чатов того же tg_id в один тред (фича A).
+    primary_tg_id = min(accounts, key=lambda a: a["linked_at"])["tg_id"]
     out = []
     async with aiohttp.ClientSession() as s:
         for acc in accounts[:5]:
@@ -1045,11 +1049,12 @@ async def whois(request: Request, browser_id: str = "", fingerprint: str = ""):
                 "tg_id": tg_id,
                 "username": username,
                 "confirmed": acc["confirmed"],
+                "linked_at": acc["linked_at"],
                 "uid": str(tg_id),
                 "sig": _make_pay_sig(str(tg_id)),
                 "sub": sub,
             })
-    return {"found": True, "accounts": out}
+    return {"found": True, "accounts": out, "primary_tg_id": primary_tg_id}
 
 
 @app.get("/pay", response_class=HTMLResponse)
