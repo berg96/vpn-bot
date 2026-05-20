@@ -1054,7 +1054,14 @@ async def whois(request: Request, browser_id: str = "", fingerprint: str = ""):
                 "sig": _make_pay_sig(str(tg_id)),
                 "sub": sub,
             })
-    return {"found": True, "accounts": out, "primary_tg_id": primary_tg_id}
+    # Все browser_id, привязанные к primary_tg_id (для фичи A — единый чат:
+    # support-bot ищет веб-треды по всем браузерам аккаунта, не только текущему).
+    linked_browsers = db.get_browsers_for_tg(primary_tg_id)
+    return {
+        "found": True, "accounts": out,
+        "primary_tg_id": primary_tg_id,
+        "linked_browsers": linked_browsers,
+    }
 
 
 @app.get("/pay", response_class=HTMLResponse)

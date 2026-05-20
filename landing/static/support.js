@@ -144,6 +144,7 @@
           '<button class="rs-btn rs-dismiss" type="button">Без оценки</button>' +
           '<button class="rs-btn primary rs-submit-rate" type="button" disabled>Отправить</button>' +
         '</div>' +
+        '<button class="rs-btn rs-unresolved" type="button">❌ Вопрос не решён</button>' +
       '</div>' +
       '<div class="rs-pending-files is-empty"></div>' +
       '<form class="rs-chat-foot">' +
@@ -197,6 +198,7 @@
     closeCard.querySelector('.rs-dismiss').addEventListener('click', function () {
       finalizeClose(false);
     });
+    closeCard.querySelector('.rs-unresolved').addEventListener('click', submitUnresolved);
   }
 
   function buildStars(host) {
@@ -249,6 +251,8 @@
     closeCard.querySelector('.rs-comment').value = '';
     closeCard.querySelector('.rs-comment').classList.remove('is-on');
     closeCard.querySelector('.rs-submit-rate').disabled = true;
+    var ur = closeCard.querySelector('.rs-unresolved');
+    if (ur) ur.disabled = false;
   }
 
   function submitRating() {
@@ -267,6 +271,28 @@
     }).catch(function () {
       btn.disabled = false;
       pushSys('Не удалось отправить оценку. Попробуйте ещё раз.');
+    });
+  }
+
+  function submitUnresolved() {
+    if (!chatKey) return;
+    var btn = closeCard.querySelector('.rs-unresolved');
+    btn.disabled = true;
+    var comment = closeCard.querySelector('.rs-comment').value.trim() || null;
+    // rating=0 — серверный сигнал «вопрос не решён»: reopen + alert операторам.
+    fetch(API_BASE + '/rate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_key: chatKey, rating: 0, comment: comment }),
+    }).then(function (r) {
+      if (!r.ok) throw new Error('unresolved ' + r.status);
+      // Сервер пришлёт SSE reopened → виджет сам скроет close-card, разблокирует ввод.
+      threadClosed = false;
+      hideCloseCard();
+      pushSys('Тред переоткрыт. Опишите, пожалуйста, что именно осталось не решённым.');
+    }).catch(function () {
+      btn.disabled = false;
+      pushSys('Не удалось отправить. Попробуйте ещё раз.');
     });
   }
 

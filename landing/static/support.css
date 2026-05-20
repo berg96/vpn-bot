@@ -466,6 +466,15 @@
 .rs-btn:hover { background: rgba(255,255,255,0.08); }
 .rs-btn.primary { background: #ffb703; color: #0d1b2a; border-color: #ffb703; }
 .rs-btn.primary:disabled { opacity: .5; cursor: not-allowed; }
+.rs-btn.rs-unresolved {
+  width: 100%;
+  margin-top: 8px;
+  background: rgba(255,82,82,0.08);
+  border-color: rgba(255,82,82,0.3);
+  color: #ff8a80;
+}
+.rs-btn.rs-unresolved:hover { background: rgba(255,82,82,0.16); }
+.rs-btn.rs-unresolved:disabled { opacity: .5; cursor: not-allowed; }
 
 @media (prefers-reduced-motion: no-preference) {
   .rs-chat-panel.is-open { animation: rs-chat-up .18s ease-out; }

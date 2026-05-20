@@ -593,6 +593,19 @@ def get_browser_accounts(browser_id: str, fingerprint: str | None = None) -> lis
             for r in rows]
 
 
+def get_browsers_for_tg(tg_id: int) -> list[str]:
+    """Все browser_id, привязанные к этому tg_id (среди не-отвергнутых).
+    Используется support-bot для поиска веб-тредов одного аккаунта,
+    созданных с разных браузеров (фича A — единый чат)."""
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT browser_id FROM browser_links "
+            "WHERE tg_id=? AND confirmed != -1",
+            (tg_id,),
+        ).fetchall()
+    return [r[0] for r in rows]
+
+
 def record_tinkoff_pending(
     order_id: str, tg_id: int, plan_key: str, amount_kopeks: int, payment_id: str
 ) -> None:
