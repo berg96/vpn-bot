@@ -7,6 +7,7 @@ services:
       DB_PATH: /data/vpn_bot.db
     volumes:
       - ./data:/data
+      - /var/log/radar-bots/vpn-bot:/var/log/radar-bots/vpn-bot
     network_mode: host
 
   landing:

@@ -83,11 +83,14 @@ def _bonus_applied_keyboard(tg_id: int) -> "InlineKeyboardMarkup":
     ])
 
 
-logging.basicConfig(level=logging.INFO)
+from radar_logging import setup_logging, UpdateIdLoggingMiddleware  # noqa: E402
+
+setup_logging("vpn-bot")
 logger = logging.getLogger(__name__)
 
 bot = Bot(token=config.BOT_TOKEN)
 dp = Dispatcher()
+dp.update.outer_middleware(UpdateIdLoggingMiddleware())
 
 
 class ActivityMiddleware(BaseMiddleware):
@@ -286,6 +289,15 @@ async def cmd_start(msg: Message, command: CommandObject):
       profile    → сразу открыть /profile (deep-link из webhook'а RUB-оплаты)
       (пусто)    → обычное приветствие + активация триала, если первый раз
     """
+    # Логируем только префикс payload'а — landing-токены в открытом виде в
+    # логах не нужны (попадут в .session/, риск утечки в push).
+    args_kind = "none"
+    if command.args:
+        args_kind = command.args[:3] if command.args.startswith(("lp_", "pro")) else "other"
+    logger.info(
+        "cmd_start: tg_id=%s msg=%s args_kind=%s",
+        msg.from_user.id if msg.from_user else None, msg.message_id, args_kind,
+    )
     if command.args:
         if command.args.startswith("lp_"):
             await _handle_landing_deeplink(msg, command.args[3:])
@@ -746,6 +758,11 @@ async def pre_checkout(query: PreCheckoutQuery):
 async def successful_payment(msg: Message):
     payment = msg.successful_payment
     payload = payment.invoice_payload  # "vpn:1m:123456"
+    logger.info(
+        "successful_payment: tg_id=%s amount=%s currency=%s payload=%s",
+        msg.from_user.id if msg.from_user else None,
+        payment.total_amount, payment.currency, payload,
+    )
     parts = payload.split(":")
     if len(parts) != 3 or parts[0] != "vpn":
         return
@@ -1268,6 +1285,10 @@ async def cmd_nodes(msg: Message):
 async def handle_unknown(msg: Message):
     if not msg.from_user:
         return
+    logger.info(
+        "handle_unknown: tg_id=%s msg=%s text_len=%s",
+        msg.from_user.id, msg.message_id, len(msg.text or msg.caption or ""),
+    )
     if not db.user_exists(msg.from_user.id):
         await msg.answer(
             "👋 Привет! Нажми кнопку ниже — активирую бесплатный период на 7 дней и 5 ГБ.",
