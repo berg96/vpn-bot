@@ -664,6 +664,22 @@ async def _proxy_marzban_sub(sub_url: str, request: Request):
     }
     if mz_userinfo:
         headers["subscription-userinfo"] = mz_userinfo
+
+    # Для Clash-клиентов (FLClash/Karing/Mihomo) инжектим DIRECT-правило для
+    # нашего домена — иначе при включённом VPN radarshield.mooo.com недоступен
+    # (трафик уходит в туннель → петля). Отступ "- " без ведущих пробелов:
+    # yaml.dump в Marzban выводит элементы списка вровень с ключом, и любой
+    # другой отступ ломает YAML (`yaml: did not find expected key`).
+    if _is_clash_client(ua):
+        try:
+            text = content.decode("utf-8")
+            direct_rule = "- DOMAIN-SUFFIX,radarshield.mooo.com,DIRECT\n"
+            if "rules:" in text and direct_rule not in text:
+                text = text.replace("rules:\n", f"rules:\n{direct_rule}", 1)
+                content = text.encode("utf-8")
+        except Exception:
+            pass  # если не YAML — ничего не ломаем
+
     return _Resp(
         content=content,
         media_type=content_type,
@@ -1403,3 +1419,11 @@ async def healthz(secret: str):
     if not expected or not hmac.compare_digest(secret, expected):
         raise HTTPException(status_code=404)
     return {"ok": True}
+
+
+@app.get("/guide", response_class=HTMLResponse)
+async def guide(request: Request):
+    return templates.TemplateResponse("guide.html", {
+        **_page_context(request),
+        "downloads": APP_DOWNLOADS,
+    })
