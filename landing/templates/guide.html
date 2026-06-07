@@ -1,0 +1,457 @@
+{% extends "_base.html" %}
+{% block title %}Как подключить RadarShield — пошаговая инструкция{% endblock %}
+{% block meta %}<meta name="description" content="Пошаговая инструкция подключения RadarShield на Android (FlClash) и iOS (Karing). Скачай клиент, добавь ссылку подписки и подключись за 2 минуты.">{% endblock %}
+
+{% block body %}
+<section class="hero compact">
+  <div class="hero-bg"></div>
+  <div class="container" style="text-align:center;position:relative;z-index:2">
+    <h1>📖 Как подключить RadarShield</h1>
+    <p class="sub">Выбери свою платформу — инструкция откроется ниже.</p>
+  </div>
+</section>
+
+<div class="container" style="padding:40px 0 80px">
+
+  <!-- Табы платформ -->
+  <div class="guide-tabs" id="guide-tabs">
+    <button class="guide-tab active" data-tab="android" type="button">
+      <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M17.6 9.48l1.84-3.18a.4.4 0 0 0-.15-.55.4.4 0 0 0-.54.15l-1.87 3.23a11.4 11.4 0 0 0-9.76 0L5.25 5.9a.4.4 0 0 0-.54-.15.4.4 0 0 0-.15.55l1.84 3.18A10.22 10.22 0 0 0 1 18h22a10.22 10.22 0 0 0-5.4-8.52zM7 15.25a1 1 0 1 1 0-2 1 1 0 0 1 0 2zm10 0a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/></svg>
+      Android · FLClash
+    </button>
+    <button class="guide-tab" data-tab="ios" type="button">
+      <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M17.5 12.5c0-2.8 2.3-4.1 2.4-4.2-1.3-1.9-3.3-2.2-4-2.2-1.7-.2-3.3 1-4.2 1-.9 0-2.2-1-3.6-1-1.8 0-3.6 1.1-4.5 2.7-2 3.4-.5 8.4 1.4 11.2.9 1.4 2 2.9 3.4 2.8 1.4 0 1.9-.9 3.5-.9 1.6 0 2.1.9 3.5.9 1.5 0 2.4-1.4 3.3-2.7 1-1.6 1.5-3.1 1.5-3.2 0 0-2.8-1.1-2.7-4.4zM14.8 4.3c.8-.9 1.3-2.2 1.2-3.5-1.1 0-2.5.7-3.3 1.6-.7.8-1.4 2.1-1.2 3.4 1.2.1 2.5-.6 3.3-1.5z"/></svg>
+      iOS · Karing
+    </button>
+    <button class="guide-tab" data-tab="windows" type="button">
+      <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M3 5.3l7.4-1V11H3V5.3zM3 18.7l7.4 1V13H3v5.7zM11.4 19.8L21 21V13h-9.6v6.8zM11.4 4.2V11H21V3l-9.6 1.2z"/></svg>
+      Windows / macOS
+    </button>
+  </div>
+
+  <!-- Android / FLClash -->
+  <div class="guide-content" id="tab-android">
+    <div class="guide-download-banner">
+      <div>
+        <div class="guide-download-title">FLClash для Android</div>
+        <div class="guide-download-sub">APK · бесплатно, без аккаунта</div>
+      </div>
+      <a class="btn btn-primary" href="{{ downloads.flclash_android }}" target="_blank" rel="noopener nofollow">Скачать</a>
+    </div>
+
+    <div class="guide-steps">
+      <div class="guide-step">
+        <div class="guide-step-num">1</div>
+        <div class="guide-step-body">
+          <h3>Установка и первый запуск</h3>
+          <p>При первом запуске появятся два системных диалога:</p>
+          <ul>
+            <li><b>«Отказ от ответственности»</b> — нажми <b>Согласен</b></li>
+            <li><b>«Уведомление о сборе данных»</b> (Firebase Crashlytics) — нажми <b>Подтвердить</b></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="guide-step">
+        <div class="guide-step-num">2</div>
+        <div class="guide-step-body">
+          <h3>Добавить профиль</h3>
+          <ol>
+            <li>Перейди во вкладку <b>Профили</b> (нижняя панель)</li>
+            <li>Нажми <b>+ Добавить профиль</b></li>
+            <li>Выбери <b>URL</b> → откроется диалог «Импорт из URL»</li>
+            <li>Вставь свою ссылку-подписку RadarShield</li>
+            <li>Нажми <b>Отправить</b></li>
+          </ol>
+          <p style="color:var(--ink-dim);font-size:14px">После загрузки в списке появится профиль <b>RadarShield</b> с меткой «Только что».</p>
+          <div class="guide-tip">
+            💡 Ссылку подписки можно получить в боте командой <b>/profile</b>
+          </div>
+        </div>
+      </div>
+
+      <div class="guide-step">
+        <div class="guide-step-num">3</div>
+        <div class="guide-step-body">
+          <h3>Подключиться</h3>
+          <ol>
+            <li>Перейди на вкладку <b>Панель управления</b></li>
+            <li>Нажми кнопку подключения (значок ▶ вверху)</li>
+            <li>Появится запрос <b>«FlClash пытается подключиться к сети VPN»</b> — нажми <b>OK</b></li>
+            <li>Статус сменится на зелёную галочку ✅ — VPN активен</li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="guide-step">
+        <div class="guide-step-num">✓</div>
+        <div class="guide-step-body">
+          <h3>Проверка</h3>
+          <p>На главном экране в блоке <b>«Обнаруж...»</b> должен появиться IP-адрес (не российский). Трафик ↑/↓ начнёт расти — значит всё работает.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="guide-table-section">
+      <h3>Режимы исходящего трафика</h3>
+      <table class="guide-table">
+        <thead><tr><th>Режим</th><th>Описание</th></tr></thead>
+        <tbody>
+          <tr><td><b>Правило</b></td><td>Рекомендуется — заблокированное через VPN, остальное напрямую</td></tr>
+          <tr><td><b>Глобальный</b></td><td>Весь трафик через VPN</td></tr>
+          <tr><td><b>Прямой</b></td><td>Весь трафик без VPN</td></tr>
+        </tbody>
+      </table>
+      <p style="color:var(--ink-dim);font-size:14px;margin-top:8px">По умолчанию выбрано <b>Правило</b> — оставь как есть.</p>
+    </div>
+  </div>
+
+  <!-- iOS / Karing -->
+  <div class="guide-content" id="tab-ios" style="display:none">
+    <div class="guide-download-banner">
+      <div>
+        <div class="guide-download-title">Karing для iOS</div>
+        <div class="guide-download-sub">App Store · iPhone / iPad</div>
+      </div>
+      <a class="btn btn-primary" href="{{ downloads.karing_ios }}" target="_blank" rel="noopener nofollow">Скачать</a>
+    </div>
+
+    <div class="guide-steps">
+      <div class="guide-step">
+        <div class="guide-step-num">1</div>
+        <div class="guide-step-body">
+          <h3>Первый запуск</h3>
+          <p>Появится экран <b>«Your Privacy Comes First»</b> — Karing собирает модель устройства и анонимные логи. Данные третьим лицам не передаются.</p>
+          <p>Нажми <b>Accept &amp; Continue</b>.</p>
+        </div>
+      </div>
+
+      <div class="guide-step">
+        <div class="guide-step-num">2</div>
+        <div class="guide-step-body">
+          <h3>Начальная настройка</h3>
+          <ul>
+            <li><b>Язык</b> → выбери <b>Русский</b> → нажми <b>Дальше</b></li>
+            <li><b>Страна или регион</b> → выбери <b>RU — Российская Федерация</b> → нажми <b>Дальше</b></li>
+            <li><b>Режим новичка</b> — оставь <b>включённым</b> на первое время</li>
+          </ul>
+          <div class="guide-tip">
+            ⚠️ Правильно укажи текущую страну — иначе возможны проблемы с перенаправлением в сети.
+          </div>
+        </div>
+      </div>
+
+      <div class="guide-step">
+        <div class="guide-step-num">3</div>
+        <div class="guide-step-body">
+          <h3>Добавить подписку</h3>
+          <ol>
+            <li>Нажми <b>«+ Добавить профи…»</b> на главном экране</li>
+            <li>Выбери <b>«Добавление подписки»</b></li>
+            <li>В поле <b>«Ссылка на подписку/содержание»</b> вставь свою ссылку RadarShield</li>
+            <li>Нажми галочку <b>✓</b> в правом верхнем углу</li>
+          </ol>
+          <div class="guide-tip">
+            💡 Ссылку подписки можно получить в боте командой <b>/profile</b>
+          </div>
+        </div>
+      </div>
+
+      <div class="guide-step">
+        <div class="guide-step-num">4</div>
+        <div class="guide-step-body">
+          <h3>Разрешить VPN</h3>
+          <p>iOS покажет диалог: <i>«Karing запрашивает разрешение на добавление конфигураций VPN»</i></p>
+          <p>Нажми <b>Разрешить</b> (серая кнопка внизу).</p>
+        </div>
+      </div>
+
+      <div class="guide-step">
+        <div class="guide-step-num">5</div>
+        <div class="guide-step-body">
+          <h3>Подключиться</h3>
+          <p>На главном экране нажми кнопку <b>«Соединить»</b>. Статус изменится на «Подключено».</p>
+        </div>
+      </div>
+
+      <div class="guide-step">
+        <div class="guide-step-num">✓</div>
+        <div class="guide-step-body">
+          <h3>Готово</h3>
+          <p>Текущая конфигурация отображается как <b>«Автовыбор»</b> — приложение само выберет лучший сервер.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="guide-table-section">
+      <h3>Режимы трафика</h3>
+      <table class="guide-table">
+        <thead><tr><th>Режим</th><th>Описание</th></tr></thead>
+        <tbody>
+          <tr><td><b>Правила</b></td><td>Рекомендуется — заблокированное через VPN, остальное напрямую</td></tr>
+          <tr><td><b>Глобально</b></td><td>Весь трафик через VPN</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Windows / macOS -->
+  <div class="guide-content" id="tab-windows" style="display:none">
+    <div class="guide-download-banner" style="flex-wrap:wrap;gap:12px">
+      <div>
+        <div class="guide-download-title">FLClash для Windows и macOS</div>
+        <div class="guide-download-sub">Бесплатно, без аккаунта</div>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <a class="btn btn-primary" href="{{ downloads.flclash_windows }}" target="_blank" rel="noopener nofollow">Windows · .exe</a>
+        <a class="btn btn-ghost" href="{{ downloads.flclash_macos_arm }}" target="_blank" rel="noopener nofollow">macOS M-серия</a>
+        <a class="btn btn-ghost" href="{{ downloads.flclash_macos_x64 }}" target="_blank" rel="noopener nofollow">macOS Intel</a>
+      </div>
+    </div>
+
+    <div class="guide-steps">
+      <div class="guide-step">
+        <div class="guide-step-num">1</div>
+        <div class="guide-step-body">
+          <h3>Скачай и установи FLClash</h3>
+          <p>Выбери кнопку выше под свою систему. На Windows запусти <code>.exe</code>, на macOS — <code>.dmg</code>.</p>
+        </div>
+      </div>
+
+      <div class="guide-step">
+        <div class="guide-step-num">2</div>
+        <div class="guide-step-body">
+          <h3>Добавь профиль по URL</h3>
+          <ol>
+            <li>Открой FLClash → нажми <b>+</b> → <b>Import from URL</b></li>
+            <li>Вставь свою ссылку-подписку RadarShield</li>
+            <li>Нажми <b>Подключить</b></li>
+          </ol>
+          <div class="guide-tip">
+            💡 Ссылку подписки можно получить в боте командой <b>/profile</b>. Или отсканируй QR-код на странице профиля.
+          </div>
+        </div>
+      </div>
+
+      <div class="guide-step">
+        <div class="guide-step-num">3</div>
+        <div class="guide-step-body">
+          <h3>Подключиться</h3>
+          <p>На главном экране нажми кнопку подключения. Статус сменится на <b>Connected</b>.</p>
+          <p>Режим <b>Правило</b> выбирается автоматически — он оптимален для большинства задач.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Нижний блок — поддержка -->
+  <div style="margin-top:56px;text-align:center;border-top:1px solid var(--border);padding-top:40px">
+    <p style="color:var(--ink-dim);font-size:16px">Что-то не получается?</p>
+    <div class="btn-row" style="justify-content:center;margin-top:16px">
+      <a class="btn btn-primary" href="https://t.me/{{ support_username }}" target="_blank" rel="noopener">💬 Написать в поддержку</a>
+      <a class="btn btn-ghost" href="https://t.me/{{ bot_username }}" target="_blank" rel="noopener">🤖 Открыти бота</a>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block head_extra %}
+<style>
+.guide-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 32px;
+  flex-wrap: wrap;
+}
+.guide-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: 10px;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-dim);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+.guide-tab:hover {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+.guide-tab.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+.guide-download-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 14px;
+  padding: 20px 24px;
+  margin-bottom: 36px;
+}
+.guide-download-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.guide-download-sub {
+  font-size: 14px;
+  color: var(--ink-dim);
+  margin-top: 4px;
+}
+.guide-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.guide-step {
+  display: flex;
+  gap: 20px;
+  padding: 28px 0;
+  border-bottom: 1px solid var(--border);
+}
+.guide-step:last-child {
+  border-bottom: none;
+}
+.guide-step-num {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 2px;
+}
+.guide-step-body {
+  flex: 1;
+}
+.guide-step-body h3 {
+  font-size: 17px;
+  font-weight: 700;
+  margin: 0 0 12px;
+  color: var(--ink);
+}
+.guide-step-body p,
+.guide-step-body li {
+  font-size: 15.5px;
+  color: var(--ink-dim);
+  line-height: 1.7;
+}
+.guide-step-body ol,
+.guide-step-body ul {
+  padding-left: 20px;
+  margin: 8px 0;
+}
+.guide-step-body b {
+  color: var(--ink);
+}
+.guide-tip {
+  margin-top: 14px;
+  padding: 12px 16px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  border-left: 3px solid var(--accent);
+  border-radius: 0 8px 8px 0;
+  font-size: 14px;
+  color: var(--ink-dim);
+  line-height: 1.6;
+}
+.guide-tip b {
+  color: var(--ink);
+}
+.guide-table-section {
+  margin-top: 40px;
+  padding-top: 32px;
+  border-top: 1px solid var(--border);
+}
+.guide-table-section h3 {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  color: var(--ink);
+}
+.guide-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 15px;
+}
+.guide-table th {
+  text-align: left;
+  padding: 10px 14px;
+  background: var(--surface);
+  color: var(--ink-dim);
+  font-weight: 600;
+  border-bottom: 1.5px solid var(--border);
+}
+.guide-table td {
+  padding: 12px 14px;
+  color: var(--ink-dim);
+  border-bottom: 1px solid var(--border);
+  line-height: 1.6;
+}
+.guide-table td b {
+  color: var(--ink);
+}
+@media (max-width: 640px) {
+  .guide-download-banner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  .guide-step-num {
+    width: 32px;
+    height: 32px;
+    font-size: 14px;
+  }
+}
+</style>
+{% endblock %}
+
+{% block body_end %}
+<script>
+(function() {
+  var tabs = document.querySelectorAll('.guide-tab');
+  var contents = document.querySelectorAll('.guide-content');
+
+  var ua = navigator.userAgent;
+  var defaultTab = 'android';
+  if (/iPhone|iPad|iPod/i.test(ua)) defaultTab = 'ios';
+  else if (/Windows/i.test(ua)) defaultTab = 'windows';
+  else if (/Macintosh|Mac OS/i.test(ua)) defaultTab = 'windows';
+
+  var hash = window.location.hash.replace('#', '');
+  if (hash === 'ios' || hash === 'android' || hash === 'windows') defaultTab = hash;
+
+  function switchTab(name) {
+    tabs.forEach(function(t) {
+      t.classList.toggle('active', t.dataset.tab === name);
+    });
+    contents.forEach(function(c) {
+      c.style.display = c.id === 'tab-' + name ? '' : 'none';
+    });
+  }
+
+  switchTab(defaultTab);
+
+  tabs.forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      switchTab(tab.dataset.tab);
+      history.replaceState(null, '', '#' + tab.dataset.tab);
+    });
+  });
+})();
+</script>
+{% endblock %}
