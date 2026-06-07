@@ -254,10 +254,10 @@ async def _cleanup_loop() -> None:
 
 
 APP_DOWNLOADS = {
-    "flclash_android": "https://github.com/chen08209/FlClash/releases/download/v0.8.92/FlClash-0.8.92-android-arm64-v8a.apk",
-    "flclash_windows": "https://github.com/chen08209/FlClash/releases/download/v0.8.92/FlClash-0.8.92-windows-amd64-setup.exe",
-    "flclash_macos_arm": "https://github.com/chen08209/FlClash/releases/download/v0.8.92/FlClash-0.8.92-macos-arm64.dmg",
-    "flclash_macos_x64": "https://github.com/chen08209/FlClash/releases/download/v0.8.92/FlClash-0.8.92-macos-amd64.dmg",
+    "flclash_android": "https://github.com/chen08209/FlClash/releases/download/v0.8.93/FlClash-0.8.93-android-arm64-v8a.apk",
+    "flclash_windows": "https://github.com/chen08209/FlClash/releases/download/v0.8.93/FlClash-0.8.93-windows-amd64-setup.exe",
+    "flclash_macos_arm": "https://github.com/chen08209/FlClash/releases/download/v0.8.93/FlClash-0.8.93-macos-arm64.dmg",
+    "flclash_macos_x64": "https://github.com/chen08209/FlClash/releases/download/v0.8.93/FlClash-0.8.93-macos-amd64.dmg",
     "karing_ios": "https://apps.apple.com/app/karing/id6472431552",
 }
 
@@ -665,20 +665,12 @@ async def _proxy_marzban_sub(sub_url: str, request: Request):
     if mz_userinfo:
         headers["subscription-userinfo"] = mz_userinfo
 
-    # Для Clash-клиентов (FLClash/Karing/Mihomo) инжектим DIRECT-правило для
-    # нашего домена — иначе при включённом VPN radarshield.mooo.com недоступен
-    # (трафик уходит в туннель → петля). Отступ "- " без ведущих пробелов:
-    # yaml.dump в Marzban выводит элементы списка вровень с ключом, и любой
-    # другой отступ ломает YAML (`yaml: did not find expected key`).
-    if _is_clash_client(ua):
-        try:
-            text = content.decode("utf-8")
-            direct_rule = "- DOMAIN-SUFFIX,radarshield.mooo.com,DIRECT\n"
-            if "rules:" in text and direct_rule not in text:
-                text = text.replace("rules:\n", f"rules:\n{direct_rule}", 1)
-                content = text.encode("utf-8")
-        except Exception:
-            pass  # если не YAML — ничего не ломаем
+    # Раньше тут инжектился `DOMAIN-SUFFIX,radarshield.mooo.com,DIRECT`,
+    # чтобы избежать hairpin (VPN-нода и веб-сервер на одном IP). На практике
+    # это била по РФ-юзерам: DIRECT гонит трафик через провайдера, чей DPI
+    # режет 82.38.171.220 — а через VPN-exit с зарубежной ноды сайт открывался.
+    # Hairpin теперь решается на стороне сервера (PREROUTING/conntrack), не
+    # перекладываем на клиента.
 
     return _Resp(
         content=content,
@@ -733,7 +725,7 @@ async def proxy_sub(token: str, request: Request):
     import base64
     try:
         padding = (4 - len(token) % 4) % 4
-        decoded = base64.b64decode(token + "=" * padding).decode("utf-8", errors="replace")
+        decoded = base64.urlsafe_b64decode(token + "=" * padding).decode("utf-8", errors="replace")
         mz_username = decoded.split(",")[0].strip()
         if not mz_username or "/" in mz_username:
             raise ValueError("bad username")
@@ -1082,7 +1074,18 @@ async def whois(request: Request, browser_id: str = "", fingerprint: str = ""):
 
 @app.get("/pay", response_class=HTMLResponse)
 async def pay_page(request: Request, uid: str = "", sig: str = "",
-                   auto: str = "", manual: str = ""):
+                   auto: str = "", manual: str = "", sub: str = ""):
+    # RadarShield client passes ?sub=<subscription token>: it already encodes
+    # the HMAC-signed tg_id, so resolve the user from it and redirect to the
+    # signed uid+sig page — no @username search for an already-known user.
+    if (not uid or not sig or not _verify_pay_sig(uid, sig)) and sub:
+        sub_tg_id = sub_tokens.parse_sub_token(sub)
+        if sub_tg_id is not None:
+            sub_uid = str(sub_tg_id)
+            return RedirectResponse(
+                url=f"/pay?uid={sub_uid}&sig={_make_pay_sig(sub_uid)}",
+                status_code=303,
+            )
     if not uid or not sig or not _verify_pay_sig(uid, sig):
         # Без персональной ссылки — показываем форму поиска по @username.
         # manual=1 — юзер сам пришёл сменить аккаунт, автоопределение пропускаем.
