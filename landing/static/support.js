@@ -430,6 +430,28 @@
     scrollDown();
   }
 
+  // Вставляет текст в элемент, оборачивая http(s)-ссылки в кликабельные <a>.
+  // Без innerHTML — только textNode/createElement, поэтому XSS-безопасно.
+  function appendText(parent, text) {
+    var re = /(https?:\/\/[^\s]+)/g;
+    var last = 0, mm;
+    while ((mm = re.exec(text)) !== null) {
+      if (mm.index > last) {
+        parent.appendChild(document.createTextNode(text.slice(last, mm.index)));
+      }
+      var a = document.createElement('a');
+      a.href = mm[0];
+      a.textContent = mm[0];
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      parent.appendChild(a);
+      last = mm.index + mm[0].length;
+    }
+    if (last < text.length) {
+      parent.appendChild(document.createTextNode(text.slice(last)));
+    }
+  }
+
   function renderMsg(m, animate) {
     var el = document.createElement('div');
     el.className = 'rs-chat-msg ' + (m.kind || 'sys');
@@ -443,7 +465,7 @@
       if (m.text) {
         var capBatch = document.createElement('div');
         capBatch.className = 'rs-file-caption';
-        capBatch.textContent = m.text;
+        appendText(capBatch, m.text);
         el.appendChild(capBatch);
       }
     } else if (m.file) {
@@ -452,11 +474,11 @@
       if (m.text) {
         var caption = document.createElement('div');
         caption.className = 'rs-file-caption';
-        caption.textContent = m.text;
+        appendText(caption, m.text);
         el.appendChild(caption);
       }
     } else if (m.text) {
-      el.textContent = m.text;
+      appendText(el, m.text);
     }
     if (m.ts && m.kind !== 'sys') {
       var ts = document.createElement('span');
