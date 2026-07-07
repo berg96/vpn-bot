@@ -247,6 +247,26 @@ class RemnawaveBackend(PanelBackend):
             start += size
         return result
 
+    # ── доставка подписки ────────────────────────────────────────────────
+    async def get_subscription_content(
+        self, subscription_url: str, user_agent: str
+    ) -> tuple[bytes, str, str | None]:
+        # публичный/SUB_PUBLIC_DOMAIN URL → внутренний Remnawave (path тот же
+        # `/api/sub/<shortUuid>`). Формат конфига Remnawave выбирает по UA клиента.
+        url = subscription_url
+        for prefix in ("https://", "http://"):
+            if url.startswith(prefix):
+                path = url[len(prefix):].split("/", 1)
+                if len(path) == 2:
+                    url = f"{self.url}/{path[1]}"
+                break
+        s = await self._sess()  # сессия несёт X-Forwarded-Proto (бэкенд его требует)
+        resp = await s.get(url, headers={"User-Agent": user_agent})
+        content = await resp.read()
+        content_type = resp.headers.get("Content-Type", "text/plain; charset=utf-8")
+        userinfo = resp.headers.get("subscription-userinfo") or None
+        return content, content_type, userinfo
+
     # ── ядро / ноды ──────────────────────────────────────────────────────
     async def _nodes_raw(self) -> list[dict]:
         s = await self._sess()

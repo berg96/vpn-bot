@@ -289,6 +289,26 @@ class MarzbanBackend(PanelBackend):
             offset += limit
         return result
 
+    # ── доставка подписки ────────────────────────────────────────────────
+    async def get_subscription_content(
+        self, subscription_url: str, user_agent: str
+    ) -> tuple[bytes, str, str | None]:
+        # публичный URL → внутренний Marzban (иначе nginx /sub/ зациклится:
+        # nginx → app → fetch public → nginx → …)
+        url = subscription_url
+        for prefix in ("https://", "http://"):
+            if url.startswith(prefix):
+                path = url[len(prefix):].split("/", 1)
+                if len(path) == 2:
+                    url = f"{self.url}/{path[1]}"
+                break
+        s = await self._sess()
+        resp = await s.get(url, headers={"User-Agent": user_agent})
+        content = await resp.read()
+        content_type = resp.headers.get("Content-Type", "text/plain; charset=utf-8")
+        userinfo = resp.headers.get("subscription-userinfo") or None
+        return content, content_type, userinfo
+
     # ── ядро / ноды ──────────────────────────────────────────────────────
     async def core_restart(self) -> bool:
         """Перезапускает Xray внутри Marzban. Нужно после disabled/revoke чтобы нода

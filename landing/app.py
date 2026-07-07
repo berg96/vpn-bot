@@ -623,34 +623,20 @@ def _captive_sub_response(tg_id: int | None = None, ua: str = ""):
 _expired_sub_response = _captive_sub_response
 
 
-async def _proxy_marzban_sub(sub_url: str, request: Request):
-    """Скачивает sub-контент из Marzban (внутренний URL) и возвращает клиенту.
+async def _proxy_sub(sub_url: str, request: Request):
+    """Скачивает sub-контент из активной панели и возвращает клиенту.
 
-    Пробрасываем `subscription-userinfo` (Marzban → клиент) и подменяем
-    `content-disposition: filename` на динамический «RadarShield-active-
-    until-DD.MM.YYYY» — это единственное место где FLClash/Karing рисуют
-    статус подписки в карточке профиля. При auto-refresh клиент перетянет
-    новое имя без переподключения.
+    Получение контента панель-специфично (Marzban↔Remnawave внутренний URL,
+    заголовки) — вынесено в backend `panel.get_subscription_content`, лендинг
+    остаётся движок-агностичным. Пробрасываем `subscription-userinfo` (панель →
+    клиент — FLClash/Karing рисуют дату истечения в карточке профиля) и статичный
+    `content-disposition: filename`.
     """
     from fastapi.responses import Response as _Resp
 
-    # Заменяем публичный домен на внутренний Marzban — иначе nginx зациклится
-    # (nginx /sub/ → наш app → fetch public URL → nginx /sub/ → loop)
-    _mz_base = os.environ.get("MARZBAN_URL", "http://127.0.0.1:8000")
-    for _prefix in ("https://", "http://"):
-        if sub_url.startswith(_prefix):
-            _path = sub_url[len(_prefix):].split("/", 1)
-            if len(_path) == 2:
-                sub_url = f"{_mz_base}/{_path[1]}"
-            break
-
     ua = request.headers.get("user-agent", "")
     try:
-        async with aiohttp.ClientSession() as s:
-            resp = await s.get(sub_url, headers={"User-Agent": ua}, timeout=aiohttp.ClientTimeout(total=15))
-            content = await resp.read()
-            content_type = resp.headers.get("Content-Type", "text/plain; charset=utf-8")
-            mz_userinfo = resp.headers.get("subscription-userinfo", "")
+        content, content_type, userinfo = await panel.get_subscription_content(sub_url, ua)
     except Exception as e:
         logger.error(f"proxy_sub fetch failed: {e}")
         raise HTTPException(status_code=502, detail="Upstream error")
@@ -661,8 +647,8 @@ async def _proxy_marzban_sub(sub_url: str, request: Request):
     headers = {
         "content-disposition": 'attachment; filename="RadarShield"',
     }
-    if mz_userinfo:
-        headers["subscription-userinfo"] = mz_userinfo
+    if userinfo:
+        headers["subscription-userinfo"] = userinfo
 
     # Раньше тут инжектился `DOMAIN-SUFFIX,radarshield.mooo.com,DIRECT`,
     # чтобы избежать hairpin (VPN-нода и веб-сервер на одном IP). На практике
@@ -711,7 +697,7 @@ async def proxy_sub(token: str, request: Request):
 
         if not _is_active(user):
             return _captive_sub_response(tg_id, ua=request.headers.get("user-agent", ""))
-        return await _proxy_marzban_sub(user["subscription_url"], request)
+        return await _proxy_sub(user["subscription_url"], request)
 
     # --- Path 2: legacy Marzban-base64 ---
     # Декодируем имя из марзбановского токена. Пускаем только если:
@@ -747,7 +733,7 @@ async def proxy_sub(token: str, request: Request):
         # Path 2: legacy безлимитчики/lp-юзеры — tg_id не извлечь из base64-username,
         # пускаем без идентификации, юзер сам введёт username/email на /pay.
         return _captive_sub_response(None, ua=request.headers.get("user-agent", ""))
-    return await _proxy_marzban_sub(user["subscription_url"], request)
+    return await _proxy_sub(user["subscription_url"], request)
 
 
 @app.get("/s/{token}", response_class=HTMLResponse)

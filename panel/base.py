@@ -67,6 +67,19 @@ class PanelBackend(ABC):
     @abstractmethod
     async def list_all_users(self) -> list[dict]: ...
 
+    # ── доставка подписки ────────────────────────────────────────────────
+    @abstractmethod
+    async def get_subscription_content(
+        self, subscription_url: str, user_agent: str
+    ) -> tuple[bytes, str, str | None]:
+        """Скачивает сырой контент подписки (конфиг для клиента) по его sub_url.
+
+        Панель-специфично: переписывает публичный sub_url на ВНУТРЕННИЙ адрес
+        панели (иначе nginx зациклится) и тянет контент с UA клиента (формат
+        подписки зависит от UA). Возвращает (content, content_type,
+        subscription_userinfo|None)."""
+        ...
+
     # ── ядро / ноды ──────────────────────────────────────────────────────
     @abstractmethod
     async def core_restart(self) -> bool: ...
