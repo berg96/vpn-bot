@@ -11,7 +11,8 @@ RUN pip install --no-cache-dir \
     aiogram==3.14.0 \
     slowapi==0.1.9
 
-COPY db.py marzban.py robokassa.py config.py sub_tokens.py ./
+COPY db.py robokassa.py config.py sub_tokens.py ./
+COPY panel/ ./panel/
 COPY landing/ ./landing/
 
 EXPOSE 8081

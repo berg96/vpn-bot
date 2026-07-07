@@ -16,7 +16,7 @@ from aiogram.enums import ParseMode
 
 import config
 import db
-import marzban
+import panel
 import tinkoff
 
 
@@ -34,7 +34,7 @@ def _assign_mz_username(tg_id: int, tg_username: str | None, first_name: str | N
     stored = db.get_mz_username(tg_id)
     if stored:
         return stored
-    new_name = marzban.build_mz_username(tg_id, tg_username, first_name)
+    new_name = panel.build_mz_username(tg_id, tg_username, first_name)
     db.set_mz_username(tg_id, new_name)
     return new_name
 
@@ -238,9 +238,8 @@ async def _do_start(tg_id: int, username: str | None, first_name: str | None, an
             parse_mode=ParseMode.HTML,
         )
         try:
-            async with aiohttp.ClientSession() as session:
-                mz_name = _assign_mz_username(tg_id, username, first_name)
-                user_data = await marzban.create_trial_user(session, tg_id, days=7, data_limit_gb=5.0, mz_username=mz_name)
+            mz_name = _assign_mz_username(tg_id, username, first_name)
+            user_data = await panel.create_trial_user(tg_id, days=7, data_limit_gb=5.0, mz_username=mz_name)
             db.mark_trial_used(tg_id)
             db.log_event(tg_id, "trial_activated", {"days": 7, "data_limit_gb": 5.0})
             mz_sub_url = user_data.get("subscription_url", "")
@@ -334,8 +333,7 @@ async def _handle_landing_deeplink(msg: Message, token: str) -> None:
         current_mz = db.get_mz_username(tg_id)
         if current_mz:
             try:
-                async with aiohttp.ClientSession() as session:
-                    existing = await marzban.get_user(session, tg_id, current_mz)
+                existing = await panel.get_user(tg_id, current_mz)
                 if existing and existing.get("status") == "active":
                     # Marzban сам считает status. active = действует (включая expire=0 — unlimited).
                     # Ранее была проверка (expire or 0) > now_ts, и unlimited (expire=0)
@@ -387,20 +385,18 @@ async def _handle_landing_deeplink(msg: Message, token: str) -> None:
         db.log_event(tg_id, "landing_claim", {"token": token})
 
         try:
-            async with aiohttp.ClientSession() as session:
-                # Landing-профиль не удаляем — 3ч сам протухнет, даёт юзеру время
-                # переключиться на основную ссылку.
-                updated = await marzban.extend_user(
-                    session,
-                    mz_username=current_mz,
-                    total_days=1,
-                    data_limit_gb=5.0,
-                )
-                # Синхронизируем sub_url landing-лида со свежим от Marzban:
-                # если cleanup делал revoke_sub, UUID поменялся — на сайте покажем актуальный.
-                lp_user = await marzban.get_user(session, 0, mz_username=lead["mz_username"])
-                if lp_user and lp_user.get("subscription_url"):
-                    db.set_landing_sub_url(token, lp_user["subscription_url"])
+            # Landing-профиль не удаляем — 3ч сам протухнет, даёт юзеру время
+            # переключиться на основную ссылку.
+            updated = await panel.extend_user(
+                mz_username=current_mz,
+                total_days=1,
+                data_limit_gb=5.0,
+            )
+            # Синхронизируем sub_url landing-лида со свежим от Marzban:
+            # если cleanup делал revoke_sub, UUID поменялся — на сайте покажем актуальный.
+            lp_user = await panel.get_user(0, mz_username=lead["mz_username"])
+            if lp_user and lp_user.get("subscription_url"):
+                db.set_landing_sub_url(token, lp_user["subscription_url"])
             mz_sub_url = updated.get("subscription_url") or ""
             if mz_sub_url:
                 db.set_sub_url(tg_id, mz_sub_url)
@@ -439,13 +435,11 @@ async def _handle_landing_deeplink(msg: Message, token: str) -> None:
     await msg.answer("⏳ Активирую 7 дней и 5 ГБ...")
 
     try:
-        async with aiohttp.ClientSession() as session:
-            user_data = await marzban.extend_user(
-                session,
-                mz_username=lead["mz_username"],
-                total_days=7,
-                data_limit_gb=5.0,
-            )
+        user_data = await panel.extend_user(
+            mz_username=lead["mz_username"],
+            total_days=7,
+            data_limit_gb=5.0,
+        )
         db.set_mz_username(tg_id, lead["mz_username"])
         db.mark_trial_used(tg_id)
         db.delete_reminder_events(tg_id)  # свежая подписка → reset напоминаний
@@ -521,16 +515,15 @@ async def cb_lp_merge(call: CallbackQuery):
             return
 
     try:
-        async with aiohttp.ClientSession() as session:
-            # Не удаляем landing-профиль сразу: у него свой expire +3h, он сам протухнет,
-            # а cleanup-loop потом дисейблит. Даём юзеру время переключиться на основную
-            # ссылку без резкого обрыва на том устройстве, с которого он пришёл с сайта.
-            updated = await marzban.add_bonus_days(session, current_mz, bonus_days=1)
-            # Синхронизируем sub_url landing-лида на случай если он был revoked ранее —
-            # чтобы на сайте показывалась актуальная ссылка.
-            lp_user = await marzban.get_user(session, 0, mz_username=lead["mz_username"])
-            if lp_user and lp_user.get("subscription_url"):
-                db.set_landing_sub_url(token, lp_user["subscription_url"])
+        # Не удаляем landing-профиль сразу: у него свой expire +3h, он сам протухнет,
+        # а cleanup-loop потом дисейблит. Даём юзеру время переключиться на основную
+        # ссылку без резкого обрыва на том устройстве, с которого он пришёл с сайта.
+        updated = await panel.add_bonus_days(current_mz, bonus_days=1)
+        # Синхронизируем sub_url landing-лида на случай если он был revoked ранее —
+        # чтобы на сайте показывалась актуальная ссылка.
+        lp_user = await panel.get_user(0, mz_username=lead["mz_username"])
+        if lp_user and lp_user.get("subscription_url"):
+            db.set_landing_sub_url(token, lp_user["subscription_url"])
     except Exception as e:
         logger.error(f"lp_merge failed: {e}")
         await call.answer("Ошибка, напиши в поддержку", show_alert=True)
@@ -583,8 +576,7 @@ async def cmd_profile(event: Message | CallbackQuery):
         return
 
     mz_name = _resolve_mz_username(tg_id, event.from_user.username, event.from_user.first_name)
-    async with aiohttp.ClientSession() as session:
-        user = await marzban.get_user(session, tg_id, mz_name)
+    user = await panel.get_user(tg_id, mz_name)
 
     if not user:
         if not db.is_trial_used(tg_id):
@@ -787,9 +779,8 @@ async def successful_payment(msg: Message):
     await msg.answer("⏳ Создаю подписку...")
 
     try:
-        async with aiohttp.ClientSession() as session:
-            mz_name = _assign_mz_username(tg_id, msg.from_user.username, msg.from_user.first_name)
-            user_data = await marzban.create_or_extend_user(session, tg_id, days, mz_username=mz_name)
+        mz_name = _assign_mz_username(tg_id, msg.from_user.username, msg.from_user.first_name)
+        user_data = await panel.create_or_extend_user(tg_id, days, mz_username=mz_name)
 
         mz_sub_url = user_data.get("subscription_url", "")
         if mz_sub_url:
@@ -843,10 +834,9 @@ def _fmt_pct(num: int, denom: int) -> str:
 async def _active_subs_from_marzban() -> tuple[int, int, int]:
     """Returns (active, expired, total) as reported by Marzban. Falls back to (-1, -1, -1)."""
     try:
-        async with aiohttp.ClientSession() as session:
-            users = await marzban.list_all_users(session)
+        users = await panel.list_all_users()
     except Exception as e:
-        logger.error(f"marzban.list_all_users failed: {e}")
+        logger.error(f"panel.list_all_users failed: {e}")
         return -1, -1, -1
 
     now_ts = int(datetime.now(timezone.utc).timestamp())
@@ -1046,7 +1036,7 @@ async def _check_nodes_health(session: aiohttp.ClientSession) -> None:
     """Нода не connected → автоматический reconnect → если не помогло, алерт в bigsupport.
     Recovery-сообщение тоже в bigsupport."""
     try:
-        nodes = await marzban.get_nodes(session)
+        nodes = await panel.get_nodes()
     except Exception as e:
         logger.error(f"nodes health check failed: {e}")
         return
@@ -1071,14 +1061,14 @@ async def _check_nodes_health(session: aiohttp.ClientSession) -> None:
         else:
             logger.info(f"node {name} status={status}, trying reconnect")
             try:
-                await marzban.reconnect_node(session, node_id)
+                await panel.reconnect_node(node_id)
             except Exception as e:
                 logger.error(f"reconnect {name} failed: {e}")
 
         await asyncio.sleep(NODE_RECONNECT_WAIT)
 
         try:
-            recheck = await marzban.get_nodes(session)
+            recheck = await panel.get_nodes()
         except Exception as e:
             logger.error(f"recheck after reconnect failed: {e}")
             continue
@@ -1149,7 +1139,7 @@ EXPIRE_REMINDERS_INTERVAL = 3600  # раз в час
 REMINDER_THRESHOLDS_HOURS = [(72, "3d"), (24, "1d"), (2, "2h")]
 
 
-async def _check_expire_reminders(session: aiohttp.ClientSession) -> int:
+async def _check_expire_reminders() -> int:
     """Проходит users.mz_username, шлёт напоминания. Возвращает кол-во отправленных."""
     users = db.get_users_with_mz()
     now_ts = int(datetime.now(timezone.utc).timestamp())
@@ -1159,7 +1149,7 @@ async def _check_expire_reminders(session: aiohttp.ClientSession) -> int:
         tg_id = u["tg_id"]
         mz = u["mz_username"]
         try:
-            mz_user = await marzban.get_user(session, 0, mz_username=mz)
+            mz_user = await panel.get_user(0, mz_username=mz)
         except Exception as e:
             logger.error(f"reminder: get_user {mz} failed: {e}")
             continue
@@ -1247,8 +1237,7 @@ async def _send_expire_reminder(tg_id: int, hours_left: float, label: str) -> No
 async def _expire_reminders_loop():
     while True:
         try:
-            async with aiohttp.ClientSession() as session:
-                sent = await _check_expire_reminders(session)
+            sent = await _check_expire_reminders()
             if sent:
                 logger.info(f"expire reminders sent: {sent}")
         except Exception as e:
@@ -1262,11 +1251,7 @@ async def cmd_nodes(msg: Message):
     if msg.from_user.id != config.ADMIN_TG_ID:
         return
     try:
-        async with aiohttp.ClientSession() as session:
-            headers = await marzban._headers(session)
-            resp = await session.get(f"{marzban.MARZBAN_URL}/api/nodes", headers=headers)
-            resp.raise_for_status()
-            nodes = await resp.json()
+        nodes = await panel.get_nodes()
         lines = ["📡 <b>Статус нод Marzban</b>\n"]
         for n in nodes:
             emoji = "✅" if n.get("status") == "connected" else "⚠️"

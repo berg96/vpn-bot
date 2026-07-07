@@ -5,5 +5,6 @@ WORKDIR /app
 RUN pip install --no-cache-dir aiogram==3.14.0 aiohttp==3.10.11 redis==5.0.7
 
 COPY *.py ./
+COPY panel/ ./panel/
 
 CMD ["python", "bot.py"]

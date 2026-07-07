@@ -18,7 +18,7 @@ from slowapi.errors import RateLimitExceeded
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 import db
-import marzban
+import panel
 import robokassa
 import sub_tokens
 
@@ -402,10 +402,9 @@ async def create_trial(
     expires_at = (datetime.now(timezone.utc) + timedelta(hours=TRIAL_HOURS)).isoformat()
 
     try:
-        async with aiohttp.ClientSession() as s:
-            user_data = await marzban.create_landing_trial(
-                s, mz_name, hours=TRIAL_HOURS, data_limit_mb=TRIAL_DATA_MB,
-            )
+        user_data = await panel.create_landing_trial(
+            mz_name, hours=TRIAL_HOURS, data_limit_mb=TRIAL_DATA_MB,
+        )
     except Exception as e:
         logger.error(f"create_landing_trial failed: {e}")
         raise HTTPException(status_code=502, detail="Не удалось создать триал, попробуй чуть позже.")
@@ -703,8 +702,7 @@ async def proxy_sub(token: str, request: Request):
         mz_username = row[0]
 
         try:
-            async with aiohttp.ClientSession() as s:
-                user = await marzban.get_user(s, 0, mz_username=mz_username)
+            user = await panel.get_user(0, mz_username=mz_username)
         except Exception as e:
             logger.error(f"proxy_sub marzban error for {mz_username}: {e}")
             raise HTTPException(status_code=502, detail="Upstream error")
@@ -733,8 +731,7 @@ async def proxy_sub(token: str, request: Request):
         raise HTTPException(status_code=404, detail="Not found")
 
     try:
-        async with aiohttp.ClientSession() as s:
-            user = await marzban.get_user(s, 0, mz_username=mz_username)
+        user = await panel.get_user(0, mz_username=mz_username)
     except Exception as e:
         logger.error(f"proxy_sub legacy marzban error for {mz_username}: {e}")
         raise HTTPException(status_code=502, detail="Upstream error")
@@ -766,8 +763,7 @@ async def success(request: Request, token: str):
     if not sub_url:
         # Backfill для старых lead'ов, созданных до миграции колонки sub_url.
         try:
-            async with aiohttp.ClientSession() as s:
-                user = await marzban.get_user(s, 0, mz_username=lead["mz_username"])
+            user = await panel.get_user(0, mz_username=lead["mz_username"])
             if user:
                 sub_url = user.get("subscription_url")
                 if sub_url:
@@ -1040,28 +1036,27 @@ async def whois(request: Request, browser_id: str = "", fingerprint: str = ""):
     # для объединения web-чатов того же tg_id в один тред (фича A).
     primary_tg_id = min(accounts, key=lambda a: a["linked_at"])["tg_id"]
     out = []
-    async with aiohttp.ClientSession() as s:
-        for acc in accounts[:5]:
-            tg_id = acc["tg_id"]
-            username = db.get_username_by_tg_id(tg_id)
-            mz = db.get_mz_username(tg_id)
-            sub = None
-            if mz:
-                try:
-                    u = await marzban.get_user(s, tg_id, mz)
-                    if u:
-                        sub = _sub_summary(u)
-                except Exception as e:
-                    logger.warning(f"whois marzban lookup failed for {tg_id}: {e}")
-            out.append({
-                "tg_id": tg_id,
-                "username": username,
-                "confirmed": acc["confirmed"],
-                "linked_at": acc["linked_at"],
-                "uid": str(tg_id),
-                "sig": _make_pay_sig(str(tg_id)),
-                "sub": sub,
-            })
+    for acc in accounts[:5]:
+        tg_id = acc["tg_id"]
+        username = db.get_username_by_tg_id(tg_id)
+        mz = db.get_mz_username(tg_id)
+        sub = None
+        if mz:
+            try:
+                u = await panel.get_user(tg_id, mz)
+                if u:
+                    sub = _sub_summary(u)
+            except Exception as e:
+                logger.warning(f"whois marzban lookup failed for {tg_id}: {e}")
+        out.append({
+            "tg_id": tg_id,
+            "username": username,
+            "confirmed": acc["confirmed"],
+            "linked_at": acc["linked_at"],
+            "uid": str(tg_id),
+            "sig": _make_pay_sig(str(tg_id)),
+            "sub": sub,
+        })
     # Все browser_id, привязанные к primary_tg_id (для фичи A — единый чат:
     # support-bot ищет веб-треды по всем браузерам аккаунта, не только текущему).
     linked_browsers = db.get_browsers_for_tg(primary_tg_id)
@@ -1251,14 +1246,13 @@ async def _activate_with_retry(
         if delay:
             await asyncio.sleep(delay)
         try:
-            async with aiohttp.ClientSession() as s:
-                mz_username = db.get_mz_username(tg_id)
-                if not mz_username:
-                    mz_username = marzban.build_mz_username(tg_id)
-                    db.set_mz_username(tg_id, mz_username)
-                user_data = await marzban.create_or_extend_user(
-                    s, tg_id, days, mz_username=mz_username,
-                )
+            mz_username = db.get_mz_username(tg_id)
+            if not mz_username:
+                mz_username = panel.build_mz_username(tg_id)
+                db.set_mz_username(tg_id, mz_username)
+            user_data = await panel.create_or_extend_user(
+                tg_id, days, mz_username=mz_username,
+            )
             mz_sub_url = user_data.get("subscription_url", "")
             if mz_sub_url:
                 db.set_sub_url(tg_id, mz_sub_url)
