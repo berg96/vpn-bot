@@ -155,6 +155,9 @@ IP_SALT = os.environ.get("LANDING_IP_SALT", "change-me")
 TRIAL_HOURS = int(os.environ.get("LANDING_TRIAL_HOURS", "3"))
 TRIAL_DATA_MB = int(os.environ.get("LANDING_TRIAL_MB", "500"))
 IP_SOFT_LIMIT_24H = int(os.environ.get("LANDING_IP_SOFT_LIMIT", "5"))
+# Общий секрет для internal-эндпоинтов (support-bot минтит триалы через лендинг,
+# чтобы всегда попадать в ту же панель, что и лендинг — без своего panel-клиента).
+INTERNAL_API_SECRET = os.environ.get("INTERNAL_API_SECRET", "")
 
 def _rate_limit_key(request: Request) -> str:
     """Ключ для rate-limit — IP юзера за nginx-прокси (X-Forwarded-For)."""
@@ -679,6 +682,35 @@ async def _proxy_sub(sub_url: str, request: Request):
         media_type=content_type,
         headers=headers,
     )
+
+
+@app.post("/api/internal/issue-trial")
+async def internal_issue_trial(request: Request):
+    """Минт триала для support-bot ЧЕРЕЗ лендинг (единая панель).
+
+    support-bot не держит своего panel-клиента: зовёт этот эндпоинт → триал
+    создаётся в АКТИВНОЙ панели (panel.create_landing_trial), ссылка —
+    панель-агностичная `_lp_sub_link`. Авторизация — общий INTERNAL_API_SECRET.
+    Лид не заводим: `_lp_sub_link` резолвится proxy_sub Path 2 по username, без
+    lead-таблицы; юзер сам протухнет по expire.
+    """
+    if not INTERNAL_API_SECRET or request.headers.get("x-internal-secret") != INTERNAL_API_SECRET:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    hours = int(body.get("hours") or TRIAL_HOURS)
+    data_mb = int(body.get("data_mb") or TRIAL_DATA_MB)
+
+    token = secrets.token_urlsafe(12)
+    mz_name = f"lp_{token}"
+    try:
+        await panel.create_landing_trial(mz_name, hours=hours, data_limit_mb=data_mb)
+    except Exception as e:
+        logger.error(f"internal_issue_trial mint failed: {e}")
+        raise HTTPException(status_code=502, detail="mint failed")
+    return {"sub_url": _lp_sub_link(mz_name), "username": mz_name, "hours": hours}
 
 
 @app.get("/sub/{token}")
