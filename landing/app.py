@@ -409,7 +409,10 @@ async def create_trial(
         logger.error(f"create_landing_trial failed: {e}")
         raise HTTPException(status_code=502, detail="Не удалось создать триал, попробуй чуть позже.")
 
-    sub_url = user_data.get("subscription_url") or None
+    # Панель-агностичная стабильная ссылка (НЕ panel subscription_url: у Remnawave
+    # это localhost/random-shortUuid, у Marzban base64(user,ts) — оба ломаются при
+    # переезде). Резолвится через proxy_sub Path 2 по username в любой панели.
+    sub_url = _lp_sub_link(mz_name)
 
     db.create_landing_lead(
         token=token,
@@ -433,6 +436,20 @@ async def create_trial(
         samesite="lax",
     )
     return resp
+
+
+def _lp_sub_link(username: str) -> str:
+    """Стабильная триал-ссылка, ПАНЕЛЬ-АГНОСТИЧНАЯ: токен = base64url(username).
+
+    proxy_sub Path 2 декодит токен обратно в username → get_user(активная панель).
+    Не зависит от формата sub-идентификатора панели (Marzban base64(user,ts) vs
+    Remnawave random shortUuid) → триал-ссылки живут при переезде движка.
+    Бонус: unpadded base64 НИКОГДА не даёт len%4==1 → обходит баг urlsafe_b64decode.
+    """
+    import base64
+
+    tok = base64.urlsafe_b64encode(username.encode()).decode().rstrip("=")
+    return f"https://radarshield.mooo.com/sub/{tok}"
 
 
 def _is_unlimited(user: dict) -> bool:
@@ -747,15 +764,9 @@ async def success(request: Request, token: str):
     # но все они эквивалентны. Показываем юзеру одну и ту же — UX чище.
     sub_url = lead.get("sub_url")
     if not sub_url:
-        # Backfill для старых lead'ов, созданных до миграции колонки sub_url.
-        try:
-            user = await panel.get_user(0, mz_username=lead["mz_username"])
-            if user:
-                sub_url = user.get("subscription_url")
-                if sub_url:
-                    db.set_landing_sub_url(lead["token"], sub_url)
-        except Exception as e:
-            logger.error(f"sub_url backfill failed for {lead['mz_username']}: {e}")
+        # Backfill старых lead'ов — стабильная username-derived ссылка (панель-агностичная).
+        sub_url = _lp_sub_link(lead["mz_username"])
+        db.set_landing_sub_url(lead["token"], sub_url)
 
     expires_dt = datetime.fromisoformat(lead["expires_at"])
     active = _is_lead_active(lead)

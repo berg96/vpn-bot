@@ -392,11 +392,9 @@ async def _handle_landing_deeplink(msg: Message, token: str) -> None:
                 total_days=1,
                 data_limit_gb=5.0,
             )
-            # Синхронизируем sub_url landing-лида со свежим от Marzban:
-            # если cleanup делал revoke_sub, UUID поменялся — на сайте покажем актуальный.
-            lp_user = await panel.get_user(0, mz_username=lead["mz_username"])
-            if lp_user and lp_user.get("subscription_url"):
-                db.set_landing_sub_url(token, lp_user["subscription_url"])
+            # (Синк sub_url landing-лида убран: триал-ссылка теперь стабильная
+            # username-derived `_lp_sub_link`, панель-агностичная — синковать
+            # изменчивый panel subscription_url больше не нужно.)
             mz_sub_url = updated.get("subscription_url") or ""
             if mz_sub_url:
                 db.set_sub_url(tg_id, mz_sub_url)
@@ -519,11 +517,8 @@ async def cb_lp_merge(call: CallbackQuery):
         # а cleanup-loop потом дисейблит. Даём юзеру время переключиться на основную
         # ссылку без резкого обрыва на том устройстве, с которого он пришёл с сайта.
         updated = await panel.add_bonus_days(current_mz, bonus_days=1)
-        # Синхронизируем sub_url landing-лида на случай если он был revoked ранее —
-        # чтобы на сайте показывалась актуальная ссылка.
-        lp_user = await panel.get_user(0, mz_username=lead["mz_username"])
-        if lp_user and lp_user.get("subscription_url"):
-            db.set_landing_sub_url(token, lp_user["subscription_url"])
+        # (Синк sub_url landing-лида убран: ссылка теперь стабильная username-derived
+        # `_lp_sub_link`, панель-агностичная — синковать panel subscription_url не нужно.)
     except Exception as e:
         logger.error(f"lp_merge failed: {e}")
         await call.answer("Ошибка, напиши в поддержку", show_alert=True)
