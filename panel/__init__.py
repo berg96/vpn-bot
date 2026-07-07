@@ -26,10 +26,10 @@ def _make_backend() -> PanelBackend:
         from .marzban_backend import MarzbanBackend
 
         return MarzbanBackend()
-    if PANEL_BACKEND == "marzneshin":
-        from .marzneshin_backend import MarzneshinBackend  # появится при переезде
+    if PANEL_BACKEND == "remnawave":
+        from .remnawave_backend import RemnawaveBackend
 
-        return MarzneshinBackend()
+        return RemnawaveBackend()
     raise RuntimeError(f"Unknown PANEL_BACKEND={PANEL_BACKEND!r}")
 
 
