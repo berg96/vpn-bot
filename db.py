@@ -144,6 +144,27 @@ def init_db():
                 "WHERE status='confirmed' AND activated_at IS NULL"
             )
 
+        # Запросы подписки — источник для учёта устройств на одну ссылку.
+        # Точка контроля наша (лендинг проксирует /sub/), панель этого не даёт:
+        # HWID-лимит Remnawave — enforce БЕЗ observe-режима (клиент без x-hwid
+        # получит 404), поэтому считаем сами и никого не блокируем.
+        # IP хранится только хешем с солью (как в landing_leads).
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS sub_requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tg_id INTEGER,
+                mz_username TEXT,
+                ip_hash TEXT NOT NULL,
+                user_agent TEXT,
+                platform TEXT,
+                hwid TEXT,
+                extra_headers TEXT,
+                ts TEXT NOT NULL
+            )
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS ix_sub_req_tg_ts ON sub_requests(tg_id, ts)")
+        c.execute("CREATE INDEX IF NOT EXISTS ix_sub_req_mz_ts ON sub_requests(mz_username, ts)")
+
 
 def record_user(tg_id: int, username: str | None) -> bool:
     """Возвращает True если пользователь новый."""
@@ -759,6 +780,57 @@ def count_events(tg_id: int, name: str) -> int:
             (tg_id, name),
         ).fetchone()
     return int(row[0]) if row else 0
+
+
+def log_sub_request(
+    tg_id: int | None,
+    mz_username: str | None,
+    ip_hash: str,
+    user_agent: str | None,
+    platform: str | None,
+    hwid: str | None,
+    extra_headers: str | None = None,
+) -> None:
+    """Пишет факт запроса подписки — сырьё для учёта устройств."""
+    with _conn() as c:
+        c.execute(
+            "INSERT INTO sub_requests "
+            "(tg_id, mz_username, ip_hash, user_agent, platform, hwid, extra_headers, ts) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (tg_id, mz_username, ip_hash, user_agent, platform, hwid, extra_headers, _now_iso()),
+        )
+
+
+def device_stats(days: int = 7) -> list[dict]:
+    """Оценка числа устройств на подписку за окно.
+
+    Точный счётчик даёт только hwid (его шлёт не всякий клиент), поэтому
+    отдаём обе метрики: distinct hwid и эвристику distinct (ip_hash, platform).
+    Эвристика ЗАВЫШАЕТ — один телефон скачет Wi-Fi↔мобильная сеть, — поэтому
+    годится как детектор перепродажи, а не как счётчик устройств.
+    """
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT COALESCE(CAST(tg_id AS TEXT), mz_username) AS who, "
+            "       COUNT(DISTINCT hwid) AS hwids, "
+            "       COUNT(DISTINCT ip_hash || '|' || COALESCE(platform, '?')) AS ip_platforms, "
+            "       COUNT(DISTINCT platform) AS platforms, "
+            "       COUNT(*) AS requests, "
+            "       MAX(ts) AS last_seen "
+            "FROM sub_requests WHERE ts >= ? GROUP BY who ORDER BY ip_platforms DESC",
+            (_iso_ago(days),),
+        ).fetchall()
+    return [
+        {
+            "who": r[0],
+            "hwids": int(r[1]),
+            "ip_platforms": int(r[2]),
+            "platforms": int(r[3]),
+            "requests": int(r[4]),
+            "last_seen": r[5],
+        }
+        for r in rows
+    ]
 
 
 def event_counts(names: list[str], days: int) -> dict[str, int]:

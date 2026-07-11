@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import hmac
+import json
 import logging
 import os
 import re
@@ -272,6 +273,59 @@ def _client_ip(request: Request) -> str:
 
 def _ip_hash(request: Request) -> str:
     return hashlib.sha256(f"{_client_ip(request)}|{IP_SALT}".encode()).hexdigest()
+
+
+# Заголовки, которые шлёт любой HTTP-клиент — в диагностику не пишем.
+_BORING_HEADERS = {
+    "host", "user-agent", "accept", "accept-encoding", "accept-language",
+    "connection", "x-forwarded-for", "x-forwarded-proto", "x-real-ip",
+    "x-forwarded-host", "x-forwarded-port", "cookie", "cache-control",
+    "pragma", "referer", "upgrade-insecure-requests", "content-length",
+}
+
+# Как разные клиенты называют идентификатор устройства (Remnawave ждёт `x-hwid`).
+_HWID_HEADERS = ("x-hwid", "x-device-id", "hwid", "device-id")
+
+
+def _sub_client_meta(request: Request) -> tuple[str | None, str | None, str | None]:
+    """(platform, hwid, extra_headers_json) из запроса подписки.
+
+    Платформа берётся из UA (клиенты пишут `Platform/android`, `platform/ios`).
+    extra_headers — всё нестандартное: так увидим, шлёт ли клиент device-id сам,
+    не выпрашивая ни у кого скриншотов.
+    """
+    ua = request.headers.get("user-agent", "")
+
+    platform = None
+    m = re.search(r"platform/(\w+)", ua, re.I)
+    if m:
+        platform = m.group(1).lower()
+
+    hwid = None
+    for h in _HWID_HEADERS:
+        if request.headers.get(h):
+            hwid = request.headers[h]
+            break
+
+    extra = {k: v for k, v in request.headers.items() if k.lower() not in _BORING_HEADERS}
+    return platform, hwid, (json.dumps(extra, ensure_ascii=False) if extra else None)
+
+
+def _log_sub_request(request: Request, tg_id: int | None, mz_username: str | None) -> None:
+    """Учёт устройств на одну подписку. Никогда не роняет выдачу конфига."""
+    try:
+        platform, hwid, extra = _sub_client_meta(request)
+        db.log_sub_request(
+            tg_id=tg_id,
+            mz_username=mz_username,
+            ip_hash=_ip_hash(request),
+            user_agent=request.headers.get("user-agent", "")[:500],
+            platform=platform,
+            hwid=hwid,
+            extra_headers=extra,
+        )
+    except Exception as e:
+        logger.warning(f"log_sub_request failed: {e}")
 
 
 def _client_fp(request: Request) -> str:
@@ -744,6 +798,8 @@ async def proxy_sub(token: str, request: Request):
         if not user or not user.get("subscription_url"):
             raise HTTPException(status_code=404, detail="Not found")
 
+        _log_sub_request(request, tg_id, mz_username)
+
         if not _is_active(user):
             return _captive_sub_response(tg_id, ua=request.headers.get("user-agent", ""))
         return await _proxy_sub(user["subscription_url"], request)
@@ -777,6 +833,8 @@ async def proxy_sub(token: str, request: Request):
     is_landing_lead = mz_username.startswith("lp_")
     if not is_landing_lead and not _is_unlimited(user):
         raise HTTPException(status_code=404, detail="Not found")
+
+    _log_sub_request(request, None, mz_username)
 
     if not _is_active(user):
         # Path 2: legacy безлимитчики/lp-юзеры — tg_id не извлечь из base64-username,
