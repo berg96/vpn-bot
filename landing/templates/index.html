@@ -9,7 +9,7 @@
   "name": "RadarShield",
   "operatingSystem": "Android, iOS, Windows, macOS",
   "applicationCategory": "UtilitiesApplication",
-  "description": "Подписочный сервис умной маршрутизации сетевого трафика. Стабильная скорость и минимальные задержки подключения.",
+  "description": "VPN с двумя протоколами и 12 серверами в 4 странах: продолжает работать, когда обычные блокируют. Российские сайты и банки идут напрямую.",
   "offers": {"@type": "Offer", "price": "0", "priceCurrency": "RUB"}
 }
 </script>
@@ -33,10 +33,11 @@
   <div class="container hero-grid">
     <div>
       <div class="eyebrow"><span class="dot"></span> Сервис работает</div>
-      <h1>Умная маршрутизация<br/><span class="accent">интернет-трафика.</span></h1>
+      <h1>Интернет открыт.<br/><span class="accent">Даже когда его закрывают.</span></h1>
       <p class="hero-sub">
-        Подписочный сервис умной маршрутизации трафика. Стабильная скорость соединения
-        и минимальные задержки при любой нагрузке.
+        Два протокола вместо одного: когда провайдер блокирует обычный VPN, соединение
+        уходит по резервному каналу и продолжает работать. Российские сайты и банки при
+        этом идут напрямую — так же быстро, как без VPN.
       </p>
       <div class="hero-cta">
         <form id="trial-form" method="post" action="/trial" style="display:inline-flex">
@@ -78,10 +79,10 @@
 
   <div class="container">
     <div class="stats">
-      <div class="stat"><div class="k">VLESS Reality</div><div class="v">современный протокол</div></div>
+      <div class="stat"><div class="k">4 страны</div><div class="v">12 серверов на выбор</div></div>
       <div class="stat"><div class="k">{{ trial_hours }} ч</div><div class="v">бесплатно без карты</div></div>
       <div class="stat"><div class="k">250 ₽</div><div class="v">месяц безлимита</div></div>
-      <div class="stat"><div class="k">RU → direct</div><div class="v">умная маршрутизация</div></div>
+      <div class="stat"><div class="k">RU → напрямую</div><div class="v">банки и госуслуги работают</div></div>
     </div>
   </div>
 </section>
@@ -153,23 +154,28 @@
 <section>
   <div class="container">
     <div class="section-head">
-      <div><div class="section-tag">Что внутри</div><h2>Технологии, на которых построено соединение.</h2></div>
+      <div><div class="section-tag">Что внутри</div><h2>Почему работает там, где остальное уже нет.</h2></div>
     </div>
     <div class="features">
       <div class="feat">
         <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
-        <h3>VLESS Reality</h3>
-        <p>Современный транспортный протокол. Стабильное соединение и минимальная задержка даже на мобильных сетях и общественных точках доступа.</p>
+        <h3>Соединение неотличимо от обычного сайта</h3>
+        <p>Протокол VLESS Reality маскирует трафик под визит на большой популярный сайт. Для оборудования провайдера это выглядит как обычный HTTPS, а не как VPN, — поэтому его не распознают и не режут.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
+        <h3>Запасной канал, если основной перекрыли</h3>
+        <p>Второй протокол — Hysteria2 — работает по другому типу соединения (UDP). Когда блокируют обычные каналы связи с сервером, он продолжает проходить. В приложении оба варианта видно рядом: не работает один — включаете соседний.</p>
       </div>
       <div class="feat">
         <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
-        <h3>Умная маршрутизация</h3>
-        <p>Российские сайты (VK, Яндекс, Сбер, Госуслуги) идут напрямую — без потери скорости. Через наши серверы идёт только то, что нужно.</p>
+        <h3>Российские сайты — мимо VPN</h3>
+        <p>VK, Яндекс, Сбер, Ozon, Госуслуги открываются напрямую, с вашего домашнего адреса. Банки не видят вход из-за границы и не блокируют операции, а скорость на этих сайтах не падает.</p>
       </div>
       <div class="feat">
         <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg></div>
         <h3>Не храним содержимое</h3>
-        <p>Видим только объём трафика — для контроля лимитов. Содержимое соединения не логируется и не анализируется.</p>
+        <p>Видим только объём трафика — он нужен для контроля лимитов. Что именно вы открываете, не логируется и не анализируется.</p>
       </div>
     </div>
   </div>
@@ -182,7 +188,7 @@
       <div>
         <div class="section-tag">Тарифы</div>
         <h2>Простая подписка. Отмена в любой момент.</h2>
-        <p class="lead">Все тарифы — полный безлимит трафика. Оплата картой через Т&#8209;Банк&nbsp;(PCI&nbsp;DSS) или Telegram&nbsp;Stars.</p>
+        <p class="lead">Все тарифы — полный безлимит трафика. Оплата картой или СБП, а также через Telegram&nbsp;Stars. Есть тариф на 3 месяца — 599&nbsp;₽, он доступен на странице оплаты.</p>
       </div>
     </div>
     <div class="pricing">
@@ -216,6 +222,36 @@
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> Без карты и регистрации</li>
         </ul>
         <a class="btn btn-ghost" href="#cta" style="margin-top:auto;justify-content:center">Начать сейчас</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SUPPORT -->
+<section id="support">
+  <div class="container">
+    <div class="section-head">
+      <div>
+        <div class="section-tag">Поддержка</div>
+        <h2>Что-то не работает — напишите. Починим.</h2>
+        <p class="lead">Блокировки меняются каждую неделю, и иногда что-то перестаёт открываться. Это чинится — но только если мы об этом знаем.</p>
+      </div>
+    </div>
+    <div class="features">
+      <div class="feat">
+        <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+        <h3>Чат прямо здесь, без Telegram</h3>
+        <p>Кнопка чата в правом нижнем углу — писать можно с сайта, аккаунт не нужен. Отвечает живой человек.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg></div>
+        <h3>Переписка не потеряется</h3>
+        <p>Закройте вкладку, выключите компьютер, вернитесь завтра — диалог останется на месте, продолжите с того же места.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.9 6.3 6.9.8-5 4.7 1.3 6.8L12 17.3 5.9 20.6 7.2 13.8l-5-4.7 6.9-.8z"/></svg></div>
+        <h3>Идеи тоже пишите</h3>
+        <p>Чего не хватает, что раздражает, что стоит добавить — сервис растёт ровно из таких сообщений. Отвечаем на каждое.</p>
       </div>
     </div>
   </div>
