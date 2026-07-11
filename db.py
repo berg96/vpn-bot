@@ -165,6 +165,30 @@ def init_db():
         c.execute("CREATE INDEX IF NOT EXISTS ix_sub_req_tg_ts ON sub_requests(tg_id, ts)")
         c.execute("CREATE INDEX IF NOT EXISTS ix_sub_req_mz_ts ON sub_requests(mz_username, ts)")
 
+        # Лог рассылок. `kind`: transactional (истечение, оплата, инцидент — их ждут,
+        # под месячный кап не попадают) | marketing (реферал, win-back, апдейт —
+        # не чаще 1 в месяц на юзера).
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS notifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tg_id INTEGER NOT NULL,
+                campaign TEXT NOT NULL,
+                kind TEXT NOT NULL DEFAULT 'marketing',
+                sent_at TEXT NOT NULL,
+                meta TEXT
+            )
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS ix_notif_tg_campaign ON notifications(tg_id, campaign)")
+        c.execute("CREATE INDEX IF NOT EXISTS ix_notif_kind_sent ON notifications(kind, sent_at)")
+
+        # Блок бота юзером = 403 навсегда: канал доставки конфигов и поддержки потерян.
+        # Поэтому даём выход мягче блока (opt-out) и перестаём писать заблокировавшим.
+        ucols = {r[1] for r in c.execute("PRAGMA table_info(users)").fetchall()}
+        if "notify_opt_out" not in ucols:
+            c.execute("ALTER TABLE users ADD COLUMN notify_opt_out INTEGER NOT NULL DEFAULT 0")
+        if "bot_blocked" not in ucols:
+            c.execute("ALTER TABLE users ADD COLUMN bot_blocked INTEGER NOT NULL DEFAULT 0")
+
 
 def record_user(tg_id: int, username: str | None) -> bool:
     """Возвращает True если пользователь новый."""
@@ -831,6 +855,71 @@ def device_stats(days: int = 7) -> list[dict]:
         }
         for r in rows
     ]
+
+
+def log_notification(tg_id: int, campaign: str, kind: str = "marketing", meta: dict | None = None) -> None:
+    with _conn() as c:
+        c.execute(
+            "INSERT INTO notifications (tg_id, campaign, kind, sent_at, meta) VALUES (?, ?, ?, ?, ?)",
+            (tg_id, campaign, kind, _now_iso(), json.dumps(meta or {}, ensure_ascii=False)),
+        )
+
+
+def was_notified(tg_id: int, campaign: str) -> bool:
+    """Кампания уже уходила этому юзеру (идемпотентность рассылок)."""
+    with _conn() as c:
+        row = c.execute(
+            "SELECT 1 FROM notifications WHERE tg_id=? AND campaign=? LIMIT 1", (tg_id, campaign)
+        ).fetchone()
+    return row is not None
+
+
+def marketing_sent_since(tg_id: int, days: int) -> int:
+    """Сколько маркетинговых сообщений ушло юзеру за окно — для месячного капа."""
+    with _conn() as c:
+        row = c.execute(
+            "SELECT count(*) FROM notifications WHERE tg_id=? AND kind='marketing' AND sent_at >= ?",
+            (tg_id, _iso_ago(days)),
+        ).fetchone()
+    return int(row[0]) if row else 0
+
+
+def set_notify_opt_out(tg_id: int, value: bool = True) -> None:
+    with _conn() as c:
+        c.execute("UPDATE users SET notify_opt_out=? WHERE tg_id=?", (1 if value else 0, tg_id))
+
+
+def mark_bot_blocked(tg_id: int, value: bool = True) -> None:
+    """403 от Telegram = юзер заблокировал бота. Ретраить бессмысленно."""
+    with _conn() as c:
+        c.execute("UPDATE users SET bot_blocked=? WHERE tg_id=?", (1 if value else 0, tg_id))
+
+
+def get_reachable_users() -> list[dict]:
+    """Кому вообще можно писать: не заблокировали бота и не отписались."""
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT tg_id, username, mz_username, first_seen, last_seen, trial_activated "
+            "FROM users WHERE COALESCE(bot_blocked,0)=0 AND COALESCE(notify_opt_out,0)=0"
+        ).fetchall()
+    return [
+        {"tg_id": r[0], "username": r[1], "mz_username": r[2],
+         "first_seen": r[3], "last_seen": r[4], "trial_activated": r[5]}
+        for r in rows
+    ]
+
+
+def get_paying_user_ids() -> set[int]:
+    with _conn() as c:
+        rows = c.execute("SELECT DISTINCT tg_id FROM payments").fetchall()
+    return {int(r[0]) for r in rows}
+
+
+def payment_counts_by_user() -> dict[int, int]:
+    """tg_id → сколько раз платил. Нужно для реферального анлока (≥2 платежа)."""
+    with _conn() as c:
+        rows = c.execute("SELECT tg_id, count(*) FROM payments GROUP BY tg_id").fetchall()
+    return {int(r[0]): int(r[1]) for r in rows}
 
 
 def event_counts(names: list[str], days: int) -> dict[str, int]:
