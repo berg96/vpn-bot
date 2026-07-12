@@ -3,9 +3,6 @@ from dataclasses import dataclass
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 BOT_USERNAME = os.environ.get("BOT_USERNAME", "radarshield_bot")
-MARZBAN_URL = os.environ["MARZBAN_URL"]
-MARZBAN_USER = os.environ["MARZBAN_USER"]
-MARZBAN_PASS = os.environ["MARZBAN_PASS"]
 ADMIN_TG_ID = int(os.environ.get("ADMIN_TG_ID", 0))
 
 ALERT_BOT_TOKEN = os.environ.get("ALERT_BOT_TOKEN", "")
