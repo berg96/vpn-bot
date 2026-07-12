@@ -965,17 +965,18 @@ async def cb_do_start(call: CallbackQuery):
     await call.answer()
 
 
-# ── Мониторинг здоровья нод Marzban ──────────────────────────────────────────
+# ── Мониторинг здоровья нод панели ────────────────────────────────────────────
 #
-# Enforcement истёкших юзеров делает сам Marzban — он ставит status=expired/limited
+# Enforcement истёкших юзеров делает сама панель — она ставит status=expired/limited
 # и пушит эти изменения на ноды. Нам enforcement дублировать не нужно.
-# Нужно только следить, что все ноды connected — иначе Marzban не сможет доставлять
+# Нужно только следить, что все ноды connected — иначе панель не сможет доставлять
 # изменения, и заблокированные юзеры продолжат пользоваться через зависшую ноду.
 
 NODE_HEALTH_INTERVAL = 3600  # 1 час
 NODE_RECONNECT_WAIT = 15  # сек после reconnect, перед перепроверкой
 
-_node_alerted: dict[int, bool] = {}
+_node_alerted: dict[str, bool] = {}  # ключ = node id (uuid панели)
+_panel_alerted = {"down": False}  # дебаунс алерта «панель недоступна»
 
 
 async def _send_alert(session: aiohttp.ClientSession, text: str) -> None:
@@ -1034,7 +1035,23 @@ async def _check_nodes_health(session: aiohttp.ClientSession) -> None:
         nodes = await panel.get_nodes()
     except Exception as e:
         logger.error(f"nodes health check failed: {e}")
+        # get_nodes упал → панель недоступна целиком (не отдельная нода). Алертим один
+        # раз: бот не сможет ни провижнить оплаты, ни отдавать /profile, ни читать ноды.
+        if not _panel_alerted["down"]:
+            _panel_alerted["down"] = True
+            await _send_alert(
+                session,
+                f"🔴 <b>Панель RadarShield недоступна</b>\n\n"
+                f"<code>{e}</code>\n\n"
+                f"Бот не читает статус нод/юзеров, оплаты и /profile не отработают. "
+                f"Проверь на мастере: <code>docker ps | grep remnawave</code>, "
+                f"<code>docker logs remnawave --tail 100</code>.",
+            )
         return
+
+    if _panel_alerted["down"]:
+        _panel_alerted["down"] = False
+        await _send_alert(session, "✅ Панель RadarShield снова отвечает.")
 
     for n in nodes:
         node_id = n.get("id")
@@ -1085,15 +1102,15 @@ async def _check_nodes_health(session: aiohttp.ClientSession) -> None:
             _node_alerted[node_id] = True
             await _send_alert(
                 session,
-                f"⚠️ <b>Нода Marzban не в порядке</b>\n\n"
+                f"⚠️ <b>Нода не в порядке</b>\n\n"
                 f"Имя: <b>{name}</b>\n"
                 f"Статус: <code>{cur_status}</code>\n"
                 f"Сообщение: <code>{cur_msg}</code>\n\n"
-                f"Авто-reconnect через master API не помог. "
+                f"Авто-reconnect через API панели не помог. "
                 f"Проверь руками: SSH на ноду → "
-                f"<code>docker logs marzban-node-marzban-node-1 --tail 100</code>, "
-                f"при необходимости <code>docker restart marzban-node-marzban-node-1</code>.\n\n"
-                f"Пока нода лежит — Marzban не доставляет ей изменения юзеров "
+                f"<code>docker logs remnanode --tail 100</code>, "
+                f"при необходимости <code>docker restart remnanode</code>.\n\n"
+                f"Пока нода лежит — панель не доставляет ей изменения юзеров "
                 f"(disable/revoke), истёкшие подписки могут продолжать ходить через неё.",
             )
             # Параллельно ставим задачу BergOps'у — пусть SSH'нет на ноду и
@@ -1101,12 +1118,12 @@ async def _check_nodes_health(session: aiohttp.ClientSession) -> None:
             _enqueue_bergops_task(
                 sender_label="vpn-bot",
                 prompt=(
-                    f"Нода Marzban «{name}» (id={node_id}) не подключается. "
-                    f"Текущий статус: {cur_status}. Сообщение мастера: {cur_msg!r}. "
-                    f"Авто-reconnect через master API уже сделан — не помогло. "
-                    f"Сходи по SSH на ноду (alpha/bravo по имени из карты), "
-                    f"посмотри логи `docker logs marzban-node-marzban-node-1 --tail 100`, "
-                    f"при явной причине — сделай `docker restart marzban-node-marzban-node-1`. "
+                    f"Нода RadarShield «{name}» (id={node_id}) не подключается к панели Remnawave. "
+                    f"Текущий статус: {cur_status}. Сообщение панели: {cur_msg!r}. "
+                    f"Авто-reconnect через API панели уже сделан — не помогло. "
+                    f"Сходи по SSH на ноду (по имени из карты: RS-Alpha/Bravo/Delta/Echo → её IP), "
+                    f"посмотри логи `docker logs remnanode --tail 100`, "
+                    f"при явной причине — сделай `docker restart remnanode`. "
                     f"Если нет уверенности — отчитайся, что нашёл, и попроси Артёма."
                 ),
             )
@@ -1242,12 +1259,12 @@ async def _expire_reminders_loop():
 
 @dp.message(Command("nodes"))
 async def cmd_nodes(msg: Message):
-    """Показывает статус всех нод Marzban — только для админа."""
+    """Показывает статус всех нод панели — только для админа."""
     if msg.from_user.id != config.ADMIN_TG_ID:
         return
     try:
         nodes = await panel.get_nodes()
-        lines = ["📡 <b>Статус нод Marzban</b>\n"]
+        lines = ["📡 <b>Статус нод RadarShield</b>\n"]
         for n in nodes:
             emoji = "✅" if n.get("status") == "connected" else "⚠️"
             lines.append(
