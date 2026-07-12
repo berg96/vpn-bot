@@ -165,6 +165,55 @@ def init_db():
         c.execute("CREATE INDEX IF NOT EXISTS ix_sub_req_tg_ts ON sub_requests(tg_id, ts)")
         c.execute("CREATE INDEX IF NOT EXISTS ix_sub_req_mz_ts ON sub_requests(mz_username, ts)")
 
+        # Онлайн-IP с нод (Xray statsUserOnline → ip-control API панели). В отличие
+        # от sub_requests считает не «кто скачал подписку», а «кто гонит трафик»:
+        # клиент тут ни при чём, подделать нечем. Копим для КАЛИБРОВКИ — сколько
+        # подсетей/ASN у нормального юзера, — а не для блокировок.
+        #
+        # Уникальные (юзер, IP) с накоплением: сырой IP не храним (только хеш с
+        # солью), но держим /24 и ASN — на них строится группировка, иначе телефон,
+        # скачущий по мобильной сети, считался бы тремя устройствами.
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS online_ips (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                username TEXT,
+                ip_hash TEXT NOT NULL,
+                ip_prefix TEXT NOT NULL,
+                asn TEXT,
+                country TEXT,
+                node TEXT,
+                first_seen TEXT NOT NULL,
+                last_seen TEXT NOT NULL,
+                samples INTEGER NOT NULL DEFAULT 1
+            )
+        """)
+        c.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ux_online_ips_user_ip "
+            "ON online_ips(user_id, ip_hash)"
+        )
+        c.execute("CREATE INDEX IF NOT EXISTS ix_online_ips_last ON online_ips(last_seen)")
+
+        # Снимок на каждый тик: сколько РАЗНЫХ IP/подсетей у юзера было
+        # одновременно. Уникальные пары (выше) этого не покажут — там телефон и
+        # ноутбук за месяц выглядят так же, как два одновременных клиента.
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS online_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                username TEXT,
+                n_ips INTEGER NOT NULL,
+                n_prefixes INTEGER NOT NULL,
+                n_asns INTEGER NOT NULL,
+                nodes TEXT
+            )
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS ix_online_snap_ts ON online_snapshots(ts)")
+        c.execute(
+            "CREATE INDEX IF NOT EXISTS ix_online_snap_user ON online_snapshots(user_id, ts)"
+        )
+
         # Лог рассылок. `kind`: transactional (истечение, оплата, инцидент — их ждут,
         # под месячный кап не попадают) | marketing (реферал, win-back, апдейт —
         # не чаще 1 в месяц на юзера).
@@ -854,6 +903,91 @@ def device_stats(days: int = 7) -> list[dict]:
             "last_seen": r[5],
         }
         for r in rows
+    ]
+
+
+def upsert_online_ip(
+    user_id: str,
+    username: str | None,
+    ip_hash: str,
+    ip_prefix: str,
+    asn: str | None,
+    country: str | None,
+    node: str | None,
+) -> None:
+    """Копит уникальные (юзер, IP): первый раз — INSERT, дальше растит samples."""
+    now = _now_iso()
+    with _conn() as c:
+        c.execute(
+            "INSERT INTO online_ips "
+            "(user_id, username, ip_hash, ip_prefix, asn, country, node, first_seen, last_seen) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(user_id, ip_hash) DO UPDATE SET "
+            "  last_seen = excluded.last_seen, "
+            "  samples = samples + 1, "
+            "  node = excluded.node, "
+            # ASN/страна могли не разрезолвиться на первом тике — дозаполняем.
+            "  asn = COALESCE(excluded.asn, asn), "
+            "  country = COALESCE(excluded.country, country)",
+            (user_id, username, ip_hash, ip_prefix, asn, country, node, now, now),
+        )
+
+
+def log_online_snapshot(
+    user_id: str,
+    username: str | None,
+    n_ips: int,
+    n_prefixes: int,
+    n_asns: int,
+    nodes: str | None,
+) -> None:
+    """Одновременность на момент тика — по ней и выставляются пороги."""
+    with _conn() as c:
+        c.execute(
+            "INSERT INTO online_snapshots "
+            "(ts, user_id, username, n_ips, n_prefixes, n_asns, nodes) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (_now_iso(), user_id, username, n_ips, n_prefixes, n_asns, nodes),
+        )
+
+
+def online_ip_stats(days: int = 7) -> list[dict]:
+    """Профиль юзера за окно: уникальные IP / подсети / ASN + пик одновременных.
+
+    `peak_prefixes` берётся из снимков — это и есть «сколько мест сразу», в
+    отличие от `prefixes` (сколько мест за всё окно: дом, работа, поезд).
+    """
+    since = _iso_ago(days)
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT user_id, "
+            "       COALESCE(MAX(username), user_id) AS username, "
+            "       COUNT(*) AS ips, "
+            "       COUNT(DISTINCT ip_prefix) AS prefixes, "
+            "       COUNT(DISTINCT asn) AS asns, "
+            "       COUNT(DISTINCT country) AS countries, "
+            "       MAX(last_seen) AS last_seen "
+            "FROM online_ips WHERE last_seen >= ? GROUP BY user_id",
+            (since,),
+        ).fetchall()
+        peaks = dict(
+            c.execute(
+                "SELECT user_id, MAX(n_prefixes) FROM online_snapshots "
+                "WHERE ts >= ? GROUP BY user_id",
+                (since,),
+            ).fetchall()
+        )
+    return [
+        {
+            "user_id": r[0],
+            "username": r[1],
+            "ips": int(r[2]),
+            "prefixes": int(r[3]),
+            "asns": int(r[4]),
+            "countries": int(r[5]),
+            "peak_prefixes": int(peaks.get(r[0], 0)),
+            "last_seen": r[6],
+        }
+        for r in sorted(rows, key=lambda x: -x[3])
     ]
 
 
