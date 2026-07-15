@@ -360,6 +360,13 @@ def record_payment(tg_id: int, plan_key: str, stars: int, charge_id: str):
             "INSERT INTO payments (tg_id, plan_key, stars, telegram_charge_id, created_at) VALUES (?, ?, ?, ?, ?)",
             (tg_id, plan_key, stars, charge_id, datetime.now(timezone.utc).isoformat()),
         )
+        # Покупка сбрасывает win-back-цикл: после истечения купленной подписки он
+        # начнётся заново (+30 → 3-дн триал → +60). Только тут — бонусы платежом
+        # не считаются и цикл не рвут. В той же транзакции (без вложенного _conn).
+        c.execute(
+            "DELETE FROM notifications WHERE tg_id=? AND campaign IN ('win_back_30', 'win_back_90')",
+            (tg_id,),
+        )
 
 
 def get_user_payments(tg_id: int) -> list[dict]:
@@ -1016,6 +1023,31 @@ def marketing_sent_since(tg_id: int, days: int) -> int:
             (tg_id, _iso_ago(days)),
         ).fetchone()
     return int(row[0]) if row else 0
+
+
+def notification_age_days(tg_id: int, campaign: str) -> float | None:
+    """Сколько дней прошло с последней отправки кампании юзеру (None — не слали).
+
+    Нужно win-back-циклу: второе касание идёт через фикс. срок после первого.
+    julianday корректно парсит наш ISO с tz-оффсетом и микросекундами.
+    """
+    with _conn() as c:
+        row = c.execute(
+            "SELECT julianday('now') - julianday(MAX(sent_at)) FROM notifications "
+            "WHERE tg_id=? AND campaign=?",
+            (tg_id, campaign),
+        ).fetchone()
+    return float(row[0]) if row and row[0] is not None else None
+
+
+def delete_winback_notifications(tg_id: int) -> None:
+    """Сброс win-back-цикла при покупке: снимаем отметки win_back_*, чтобы после
+    истечения купленной подписки цикл (+30 → 3-дн триал → +60) начался заново."""
+    with _conn() as c:
+        c.execute(
+            "DELETE FROM notifications WHERE tg_id=? AND campaign IN ('win_back_30', 'win_back_90')",
+            (tg_id,),
+        )
 
 
 def set_notify_opt_out(tg_id: int, value: bool = True) -> None:
