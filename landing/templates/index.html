@@ -13,6 +13,15 @@
   "offers": {"@type": "Offer", "price": "0", "priceCurrency": "RUB"}
 }
 </script>
+<style>
+.my-sub-card{margin:14px 0;padding:16px 18px;border:1px solid var(--line,rgba(255,255,255,.12));border-radius:14px;background:var(--panel,rgba(255,255,255,.04));}
+.my-sub-title{font-weight:700;margin-bottom:6px;}
+.my-sub-note{color:var(--ink-mute,#9aa4b2);font-size:13.5px;margin-bottom:12px;}
+.my-sub-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.my-sub-url{flex:1;min-width:0;overflow-x:auto;white-space:nowrap;padding:9px 11px;border-radius:9px;background:rgba(0,0,0,.28);font-size:12.5px;}
+.my-sub-open{display:inline-block;margin-top:12px;font-weight:600;text-decoration:none;}
+.btn-sm{padding:8px 14px;font-size:13px;}
+</style>
 {% endblock %}
 
 {% block body %}
@@ -25,6 +34,19 @@
   </div>
 </div>
 {% endif %}
+
+<!-- Ссылка подписки для узнанного браузера (заполняется JS через /api/my-subscription) -->
+<div class="container">
+  <div id="my-sub-card" class="my-sub-card" hidden>
+    <div class="my-sub-title">🔑 Ваша ссылка подписки</div>
+    <div class="my-sub-note" id="my-sub-note">Мы узнали ваш браузер — вот постоянная ссылка на подписку. Её можно скопировать или открыть в приложении.</div>
+    <div class="my-sub-row">
+      <code id="my-sub-url" class="my-sub-url"></code>
+      <button type="button" id="my-sub-copy" class="btn btn-sm">Копировать</button>
+    </div>
+    <a id="my-sub-open" class="my-sub-open" href="#" rel="nofollow">📲 Открыть в приложении</a>
+  </div>
+</div>
 
 <!-- HERO -->
 <section class="hero">
@@ -298,6 +320,7 @@
 
 {% block body_end %}
 <script src="/static/app.js"></script>
+<script src="/static/mysub.js" defer></script>
 <script>
 // FingerprintJS грузим динамически ПОСЛЕ события load. Статический <script>
 // (даже defer) задерживает событие load, если ресурс висит, — страница

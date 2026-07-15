@@ -506,7 +506,7 @@ def _lp_sub_link(username: str) -> str:
     import base64
 
     tok = base64.urlsafe_b64encode(username.encode()).decode().rstrip("=")
-    return f"https://radarshield.mooo.com/sub/{tok}"
+    return f"https://radarshield.mooo.com/sub/{tok}#{sub_tokens.PROFILE_NAME}"
 
 
 def _is_unlimited(user: dict) -> bool:
@@ -767,6 +767,53 @@ async def internal_issue_trial(request: Request):
     return {"sub_url": _lp_sub_link(mz_name), "username": mz_name, "hours": hours}
 
 
+@app.get("/api/internal/user-info")
+async def internal_user_info(request: Request, tg_id: int = 0):
+    """Карточка юзера для support-bot: подписка + платежи. Ключ — tg_id.
+
+    ⚠️ Только за INTERNAL_API_SECRET, в отличие от `/api/whois`. Тот открыт
+    потому, что ключ там — неугадываемый browser_id; tg_id же угадывается
+    тривиально, и открытый доступ дал бы перечисление подписок всех юзеров.
+
+    Подписку берём из АКТИВНОЙ панели (panel.get_user) — не из локальной БД:
+    продления/бонусы/статус живут там, локальная копия отстаёт.
+    """
+    if not INTERNAL_API_SECRET or request.headers.get("x-internal-secret") != INTERNAL_API_SECRET:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if not tg_id:
+        raise HTTPException(status_code=400, detail="tg_id required")
+
+    mz_username = db.get_mz_username(tg_id)
+    if not mz_username:
+        return {"found": False}
+
+    out: dict = {"found": True, "mz_username": mz_username}
+    try:
+        user = await panel.get_user(tg_id, mz_username)
+    except Exception as e:
+        logger.warning(f"internal_user_info panel lookup failed for {tg_id}: {e}")
+        user = None
+
+    if user:
+        expire = user.get("expire")
+        out["status"] = user.get("status")
+        out["expire"] = expire
+        out["expired"] = bool(expire and expire < time.time())
+        out["used_traffic"] = user.get("used_traffic") or 0
+        # online_at есть только у Remnawave — по нему видно, живой ли клиент
+        out["online_at"] = user.get("online_at")
+        out["first_connected_at"] = user.get("first_connected_at")
+    else:
+        # Панель не ответила — честно говорим «неизвестно», а не «нет подписки»:
+        # молчание не должно выглядеть как факт (та же грабля, что с online-IP).
+        out["status"] = None
+
+    payments = db.get_user_payments(tg_id)
+    out["payments"] = payments
+    out["paid"] = bool(payments)
+    return out
+
+
 @app.get("/sub/{token}")
 async def proxy_sub(token: str, request: Request):
     """Стабильный прокси подписки.
@@ -913,7 +960,7 @@ async def open_app(request: Request, token: str):
     link_uid: str | None = None
     link_sig: str | None = None
     if tg_id is not None and db.get_mz_username(tg_id):
-        sub_url = f"https://radarshield.mooo.com/sub/{token}"
+        sub_url = f"https://radarshield.mooo.com/sub/{token}#{sub_tokens.PROFILE_NAME}"
         # Страница открыта из бота — tg_id известен, тихо привязываем браузер.
         link_uid = str(tg_id)
         link_sig = _make_pay_sig(link_uid)
@@ -1154,6 +1201,42 @@ async def whois(request: Request, browser_id: str = "", fingerprint: str = ""):
     }
 
 
+@app.get("/api/my-subscription")
+@limiter.limit("30/minute")
+async def my_subscription(request: Request, browser_id: str = "", fingerprint: str = ""):
+    """Постоянная ссылка подписки для УЗНАННОГО браузера.
+
+    Ключ — browser_id (неугадываемый токен), а НЕ tg_id. tg_id перебираем: отдай
+    ссылку по нему открыто — и эндпоинт превратится в станок «отчекань подписку
+    любого id» (HMAC цел, но мы сами её чеканим по чужому номеру). browser_id
+    подставить нельзя — знать/перебрать чужой неоткуда. Тот же путь, что /api/whois.
+    """
+    browser_id = (browser_id or "").strip()[:64]
+    fingerprint = (fingerprint or "").strip()[:128] or None
+    if not browser_id and not fingerprint:
+        return {"found": False}
+    accounts = db.get_browser_accounts(browser_id, fingerprint)
+    if not accounts:
+        return {"found": False}
+    # Основной аккаунт браузера = привязан раньше всех (как в whois).
+    tg_id = min(accounts, key=lambda a: a["linked_at"])["tg_id"]
+    if not db.get_mz_username(tg_id):
+        return {"found": False}
+    # Истёкшему ссылку тоже отдаём: продлит — та же ссылка оживёт. Статус кладём,
+    # чтобы фронт мог подсветить «истекла».
+    status = None
+    try:
+        u = await panel.get_user(tg_id, db.get_mz_username(tg_id))
+        status = (u or {}).get("status")
+    except Exception as e:
+        logger.warning(f"my_subscription panel lookup {tg_id}: {e}")
+    return {
+        "found": True,
+        "sub_url": f"https://radarshield.mooo.com/sub/{sub_tokens.make_sub_token(tg_id)}#{sub_tokens.PROFILE_NAME}",
+        "status": status,
+    }
+
+
 @app.get("/pay", response_class=HTMLResponse)
 async def pay_page(request: Request, uid: str = "", sig: str = "",
                    auto: str = "", manual: str = "", sub: str = ""):
@@ -1373,7 +1456,7 @@ async def _send_activation_notice(
     if not _tg_bot or not tg_id:
         return
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-    sub_url = f"https://radarshield.mooo.com/sub/{sub_tokens.make_sub_token(tg_id)}"
+    sub_url = sub_tokens.sub_url(tg_id)
     try:
         await _tg_bot.send_message(
             tg_id,
