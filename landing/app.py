@@ -1225,15 +1225,22 @@ async def my_subscription(request: Request, browser_id: str = "", fingerprint: s
     # Истёкшему ссылку тоже отдаём: продлит — та же ссылка оживёт. Статус кладём,
     # чтобы фронт мог подсветить «истекла».
     status = None
+    expire_ts = None
     try:
         u = await panel.get_user(tg_id, db.get_mz_username(tg_id))
         status = (u or {}).get("status")
+        expire_ts = (u or {}).get("expire")
     except Exception as e:
         logger.warning(f"my_subscription panel lookup {tg_id}: {e}")
+    # username — по просьбе дизайнера: человек должен сразу видеть, ЧЕЙ аккаунт
+    # узнали (у одного браузера может быть привязано несколько). Отдаём только
+    # тому, кто и так уже прошёл проверку по browser_id, — новых данных не раскрываем.
     return {
         "found": True,
         "sub_url": f"https://radarshield.mooo.com/sub/{sub_tokens.make_sub_token(tg_id)}#{sub_tokens.PROFILE_NAME}",
         "status": status,
+        "username": db.get_username_by_tg_id(tg_id),
+        "expire_at": expire_ts,
     }
 
 

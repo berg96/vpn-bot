@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Я никогда не… — Игра</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  font-family:'Manrope','Inter',system-ui,sans-serif;
+  min-height:100dvh;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:#0d0d1a;color:#e8e8f0;
+  padding:20px;
+  user-select:none;
+  overflow:hidden;
+}
+.container{
+  max-width:480px;width:100%;text-align:center;
+  display:flex;flex-direction:column;align-items:center;gap:24px;
+}
+h1{
+  font-size:1.6rem;font-weight:800;
+  background:linear-gradient(135deg,#f7c948,#ee5a24);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  background-clip:text;
+}
+.card{
+  background:rgba(255,255,255,.06);
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:20px;
+  padding:40px 28px;
+  min-height:200px;
+  width:100%;
+  display:flex;align-items:center;justify-content:center;
+  position:relative;
+  transition:transform .3s,opacity .3s;
+}
+.card.exit-left{transform:translateX(-120%) rotate(-8deg);opacity:0}
+.card.exit-right{transform:translateX(120%) rotate(8deg);opacity:0}
+.card.enter{animation:cardIn .35s ease-out}
+@keyframes cardIn{
+  from{transform:scale(.9) translateY(30px);opacity:0}
+  to{transform:scale(1) translateY(0);opacity:1}
+}
+.card-text{font-size:1.35rem;font-weight:600;line-height:1.5}
+.category{
+  position:absolute;top:12px;right:16px;
+  font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.08em;
+  color:rgba(255,255,255,.35);
+}
+.counter{font-size:.8rem;color:rgba(255,255,255,.3)}
+.buttons{display:flex;gap:14px;width:100%}
+.btn{
+  flex:1;padding:14px;border:none;border-radius:14px;
+  font-size:1rem;font-weight:700;cursor:pointer;
+  transition:transform .15s,box-shadow .15s;
+}
+.btn:active{transform:scale(.95)}
+.btn-yes{
+  background:linear-gradient(135deg,#27ae60,#2ecc71);color:#fff;
+  box-shadow:0 4px 20px rgba(46,204,113,.3);
+}
+.btn-no{
+  background:linear-gradient(135deg,#e74c3c,#c0392b);color:#fff;
+  box-shadow:0 4px 20px rgba(231,76,60,.3);
+}
+.btn-next{
+  background:linear-gradient(135deg,#3498db,#2980b9);color:#fff;
+  box-shadow:0 4px 20px rgba(52,152,219,.3);
+}
+.settings{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.chip{
+  padding:6px 14px;border-radius:20px;
+  font-size:.75rem;font-weight:600;cursor:pointer;
+  border:1px solid rgba(255,255,255,.15);
+  background:rgba(255,255,255,.05);
+  color:rgba(255,255,255,.5);
+  transition:all .2s;
+}
+.chip.active{border-color:#f7c948;color:#f7c948;background:rgba(247,201,72,.1)}
+.score-bar{display:flex;gap:20px;font-size:.85rem;font-weight:600}
+.score-bar span{opacity:.6}
+.score-yes{color:#2ecc71}
+.score-no{color:#e74c3c}
+.footer{margin-top:12px;font-size:.65rem;color:rgba(255,255,255,.15)}
+.footer a{color:rgba(255,255,255,.25);text-decoration:none}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🍷 Я никогда не…</h1>
+  <div class="settings" id="filters"></div>
+  <div class="score-bar">
+    <span class="score-yes">Делал: <b id="sYes">0</b></span>
+    <span class="score-no">Не делал: <b id="sNo">0</b></span>
+  </div>
+  <div class="card" id="card">
+    <div class="category" id="cat"></div>
+    <div class="card-text" id="text">Нажми «Дальше» чтобы начать!</div>
+  </div>
+  <div class="counter" id="counter"></div>
+  <div class="buttons">
+    <button class="btn btn-yes" id="bYes" style="display:none" onclick="answer('yes')">✋ Делал</button>
+    <button class="btn btn-no" id="bNo" style="display:none" onclick="answer('no')">😇 Не делал</button>
+    <button class="btn btn-next" id="bNext" onclick="next()">Дальше →</button>
+  </div>
+  <div class="footer"><a href="/">RadarShield</a></div>
+</div>
+<script>
+const Q=[
+// === лёгкие ===
+{t:"засыпал на паре/лекции",c:"лёгкие"},
+{t:"гуглил свои симптомы вместо похода к врачу",c:"лёгкие"},
+{t:"ел что-то с пола (правило 5 секунд!)",c:"лёгкие"},
+{t:"отправлял сообщение не тому человеку",c:"лёгкие"},
+{t:"делал вид, что не заметил знакомого на улице",c:"лёгкие"},
+{t:"притворялся, что слушаю, хотя вообще не слышал",c:"лёгкие"},
+{t:"забывал имя человека сразу после знакомства",c:"лёгкие"},
+{t:"врал про свой возраст",c:"лёгкие"},
+{t:"пел в душе",c:"лёгкие"},
+{t:"разговаривал сам с собой",c:"лёгкие"},
+{t:"прогуливал работу/учёбу",c:"лёгкие"},
+{t:"плакал от фильма",c:"лёгкие"},
+{t:"фотографировал еду перед тем как съесть",c:"лёгкие"},
+{t:"смотрел сериал целый день не вставая",c:"лёгкие"},
+{t:"врал, что пробки, хотя просто проспал",c:"лёгкие"},
+{t:"говорил «я уже выхожу», лёжа на диване",c:"лёгкие"},
+{t:"перечитывал свой же диалог с кем-то",c:"лёгкие"},
+{t:"удалял свой пост/сторис через 5 минут",c:"лёгкие"},
+{t:"делал вид, что занят, чтобы не помогать",c:"лёгкие"},
+{t:"спал до обеда в будний день",c:"лёгкие"},
+{t:"отвечал «ладно» и не делал",c:"лёгкие"},
+{t:"читал чужую переписку, пока человек отошёл",c:"лёгкие"},
+{t:"притворялся, что разбираюсь в вине/кофе/еде",c:"лёгкие"},
+{t:"выключал камеру на созвоне и занимался своими делами",c:"лёгкие"},
+{t:"ставил будильник на 6 утра с уверенностью, что встану",c:"лёгкие"},
+{t:"выходил из дома и возвращался за забытым 3+ раза",c:"лёгкие"},
+{t:"говорил «сейчас приду» и пропадал на час",c:"лёгкие"},
+{t:"клал телефон куда-то и искал его по полчаса",c:"лёгкие"},
+{t:"ел за компом и ронял крошки в клавиатуру",c:"лёгкие"},
+{t:"начинал новый сериал в 11 вечера в воскресенье",c:"лёгкие"},
+// === приключения ===
+{t:"путешествовал автостопом",c:"приключения"},
+{t:"прыгал с парашютом или банджи",c:"приключения"},
+{t:"купался голышом",c:"приключения"},
+{t:"ночевал на вокзале или в аэропорту",c:"приключения"},
+{t:"уходил из дома без телефона на целый день",c:"приключения"},
+{t:"ездил в другой город/страну спонтанно, без плана",c:"приключения"},
+{t:"поднимался на крышу высотки",c:"приключения"},
+{t:"пробовал экзотическую еду (жуки, змеи и т.д.)",c:"приключения"},
+{t:"терялся в чужом городе без карты",c:"приключения"},
+{t:"ночевал в палатке",c:"приключения"},
+{t:"нырял со скалы в воду",c:"приключения"},
+{t:"заходил в заброшенное здание",c:"приключения"},
+{t:"ездил куда-то один",c:"приключения"},
+{t:"залезал через забор куда-то, куда нельзя",c:"приключения"},
+{t:"плавал ночью в море/озере",c:"приключения"},
+{t:"ловил попутку в незнакомом городе",c:"приключения"},
+{t:"ел уличную еду в другой стране и потом жалел",c:"приключения"},
+{t:"катался на крыше поезда/электрички",c:"приключения"},
+// === отношения ===
+{t:"влюблялся с первого взгляда",c:"отношения"},
+{t:"целовался на первом свидании",c:"отношения"},
+{t:"писал бывшему/бывшей ночью",c:"отношения"},
+{t:"сталкерил чей-то профиль в соцсетях",c:"отношения"},
+{t:"врал партнёру, чтобы не расстраивать",c:"отношения"},
+{t:"дарил подарок, купленный в последний момент",c:"отношения"},
+{t:"забывал годовщину или день рождения близкого",c:"отношения"},
+{t:"ревновал без причины",c:"отношения"},
+{t:"писал длинное сообщение и удалял перед отправкой",c:"отношения"},
+{t:"следил за «последним онлайн»",c:"отношения"},
+{t:"удалял переписку, которую не хотел показывать",c:"отношения"},
+{t:"говорил «мне всё равно, выбирай ты» и потом обижался",c:"отношения"},
+{t:"листал инсту бывшего/бывшей с нового аккаунта",c:"отношения"},
+{t:"ставил лайк старому фото и потом в панике убирал",c:"отношения"},
+{t:"врал, что «телефон сел», чтобы не отвечать",c:"отношения"},
+{t:"флиртовал с кем-то, уже будучи в отношениях",c:"отношения"},
+// === работа ===
+{t:"тратил зарплату за первые 3 дня",c:"работа"},
+{t:"подделывал больничный / отгул",c:"работа"},
+{t:"засыпал на рабочем совещании",c:"работа"},
+{t:"сидел на работе в соцсетях весь день",c:"работа"},
+{t:"покупал что-то ненужное по скидке",c:"работа"},
+{t:"одалживал деньги и забывал вернуть",c:"работа"},
+{t:"делал вид, что работаю, когда подходит начальник",c:"работа"},
+{t:"подписывал документ, не читая",c:"работа"},
+{t:"брал ручку с работы домой (случайно, конечно)",c:"работа"},
+{t:"играл в игры на рабочем компьютере",c:"работа"},
+{t:"говорил «разберусь за 5 минут» и сидел 3 часа",c:"работа"},
+{t:"писал отчёт за 10 минут до дедлайна",c:"работа"},
+{t:"обсуждал зарплату коллег за спиной",c:"работа"},
+{t:"выходил «на минутку покурить» и пропадал на полчаса",c:"работа"},
+// === гик ===
+{t:"забывал пароль сразу после регистрации",c:"гик"},
+{t:"проводил 24+ часов за компом без перерыва",c:"гик"},
+{t:"гуглил ответ, а потом выдавал за свой",c:"гик"},
+{t:"кричал на компьютер / телефон",c:"гик"},
+{t:"удалял что-то важное случайно (без бэкапа)",c:"гик"},
+{t:"чинил технику ударом",c:"гик"},
+{t:"использовал пароль 123456 или qwerty",c:"гик"},
+{t:"делал rm -rf не в той папке",c:"гик"},
+{t:"деплоил в пятницу вечером",c:"гик"},
+{t:"фиксил баг добавлением ещё одного бага",c:"гик"},
+{t:"говорил «это работает на моей машине»",c:"гик"},
+{t:"копировал код со StackOverflow не понимая что он делает",c:"гик"},
+{t:"называл переменную temp/test и забывал переименовать",c:"гик"},
+{t:"коммитил с сообщением «fix» без пояснений",c:"гик"},
+{t:"пушил секреты/пароли в гит",c:"гик"},
+{t:"дебажил 2 часа и находил опечатку в одной букве",c:"гик"},
+// === жёсткие ===
+{t:"просыпался и не помнил вчерашний вечер",c:"жёсткие"},
+{t:"делал татуировку спонтанно",c:"жёсткие"},
+{t:"врал на собеседовании про опыт",c:"жёсткие"},
+{t:"уходил из ресторана, не заплатив",c:"жёсткие"},
+{t:"терял телефон в пьяном виде",c:"жёсткие"},
+{t:"отправлял пьяные голосовые",c:"жёсткие"},
+{t:"клялся бросить пить и нарушал через день",c:"жёсткие"},
+{t:"ломал чужую вещь и делал вид, что ничего не было",c:"жёсткие"},
+{t:"дрался с другом и мирился на следующий день",c:"жёсткие"},
+{t:"выходил на работу с похмелья",c:"жёсткие"},
+{t:"врал родителям про оценки",c:"жёсткие"},
+{t:"делал что-то только ради спора «на слабо»",c:"жёсткие"},
+{t:"блевал в такси",c:"жёсткие"},
+{t:"просыпался в незнакомом месте",c:"жёсткие"},
+{t:"звонил по пьяни начальнику",c:"жёсткие"},
+{t:"угонял тележку из супермаркета",c:"жёсткие"},
+// === 18+ ===
+{t:"занимался сексом на первом свидании",c:"18+"},
+{t:"отправлял интимные фото",c:"18+"},
+{t:"занимался сексом в общественном месте",c:"18+"},
+{t:"пробовал ролевые игры в постели",c:"18+"},
+{t:"смотрел порно на рабочем/чужом устройстве",c:"18+"},
+{t:"занимался сексом с коллегой",c:"18+"},
+{t:"целовался с человеком своего пола",c:"18+"},
+{t:"использовал секс-игрушки",c:"18+"},
+{t:"занимался сексом по пьяни и жалел утром",c:"18+"},
+{t:"секстился с незнакомым человеком",c:"18+"},
+{t:"фантазировал о друге/подруге партнёра",c:"18+"},
+{t:"был на стриптизе",c:"18+"},
+{t:"занимался сексом, когда в соседней комнате кто-то был",c:"18+"},
+{t:"врал партнёру про количество бывших",c:"18+"},
+{t:"пробовал секс в машине",c:"18+"},
+{t:"делал/получал засос и потом прятал его",c:"18+"},
+{t:"занимался сексом с бывшим/бывшей «в последний раз»",c:"18+"},
+{t:"знакомился в тиндере ради одной ночи",c:"18+"},
+{t:"пробовал что-то из камасутры и понял что не гимнаст",c:"18+"},
+{t:"занимался сексом по видеосвязи",c:"18+"},
+{t:"отправлял дик-пик (или получал незваный)",c:"18+"},
+{t:"притворялся, что кончил(а)",c:"18+"},
+{t:"трахался с соседом/соседкой",c:"18+"},
+{t:"пробовал БДСМ-элементы (наручники, повязка, шлёпки)",c:"18+"},
+{t:"занимался сексом в воде (море, бассейн, душ)",c:"18+"},
+];
+const cats=[...new Set(Q.map(q=>q.c))];
+const active=new Set(cats);
+let deck=[],idx=0,sY=0,sN=0,started=false;
+const $f=document.getElementById('filters');
+cats.forEach(c=>{
+  const d=document.createElement('div');
+  d.className='chip active';d.textContent=c;
+  d.onclick=()=>{
+    if(active.has(c)){if(active.size===1)return;active.delete(c);d.classList.remove('active')}
+    else{active.add(c);d.classList.add('active')}
+  };
+  $f.appendChild(d);
+});
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+function deal(){deck=shuffle(Q.filter(q=>active.has(q.c)));idx=0}
+function show(){
+  const card=document.getElementById('card');
+  const q=deck[idx];
+  card.classList.remove('enter','exit-left','exit-right');
+  void card.offsetWidth;
+  card.classList.add('enter');
+  document.getElementById('text').textContent='Я никогда не '+q.t;
+  document.getElementById('cat').textContent=q.c;
+  document.getElementById('counter').textContent=(idx+1)+' / '+deck.length;
+}
+function next(){
+  if(!started){
+    started=true;
+    document.getElementById('bYes').style.display='';
+    document.getElementById('bNo').style.display='';
+    document.getElementById('bNext').style.display='none';
+    deal();show();return;
+  }
+  deal();idx=0;sY=0;sN=0;
+  document.getElementById('sYes').textContent=sY;
+  document.getElementById('sNo').textContent=sN;
+  show();
+}
+function answer(type){
+  if(type==='yes')document.getElementById('sYes').textContent=++sY;
+  else document.getElementById('sNo').textContent=++sN;
+  const card=document.getElementById('card');
+  card.classList.add(type==='yes'?'exit-left':'exit-right');
+  setTimeout(()=>{
+    idx++;
+    if(idx>=deck.length){
+      card.classList.remove('exit-left','exit-right');
+      void card.offsetWidth;card.classList.add('enter');
+      document.getElementById('text').textContent='Раунд окончен! Делал: '+sY+', Не делал: '+sN;
+      document.getElementById('cat').textContent='';
+      document.getElementById('counter').textContent='';
+      document.getElementById('bYes').style.display='none';
+      document.getElementById('bNo').style.display='none';
+      document.getElementById('bNext').style.display='';
+      document.getElementById('bNext').textContent='Ещё раунд →';
+      return;
+    }
+    show();
+  },300);
+}
+</script>
+</body>
+</html>

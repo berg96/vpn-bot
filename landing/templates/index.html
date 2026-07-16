@@ -13,15 +13,6 @@
   "offers": {"@type": "Offer", "price": "0", "priceCurrency": "RUB"}
 }
 </script>
-<style>
-.my-sub-card{margin:14px 0;padding:16px 18px;border:1px solid var(--line,rgba(255,255,255,.12));border-radius:14px;background:var(--panel,rgba(255,255,255,.04));}
-.my-sub-title{font-weight:700;margin-bottom:6px;}
-.my-sub-note{color:var(--ink-mute,#9aa4b2);font-size:13.5px;margin-bottom:12px;}
-.my-sub-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
-.my-sub-url{flex:1;min-width:0;overflow-x:auto;white-space:nowrap;padding:9px 11px;border-radius:9px;background:rgba(0,0,0,.28);font-size:12.5px;}
-.my-sub-open{display:inline-block;margin-top:12px;font-weight:600;text-decoration:none;}
-.btn-sm{padding:8px 14px;font-size:13px;}
-</style>
 {% endblock %}
 
 {% block body %}
@@ -35,18 +26,6 @@
 </div>
 {% endif %}
 
-<!-- Ссылка подписки для узнанного браузера (заполняется JS через /api/my-subscription) -->
-<div class="container">
-  <div id="my-sub-card" class="my-sub-card" hidden>
-    <div class="my-sub-title">🔑 Ваша ссылка подписки</div>
-    <div class="my-sub-note" id="my-sub-note">Мы узнали ваш браузер — вот постоянная ссылка на подписку. Её можно скопировать или открыть в приложении.</div>
-    <div class="my-sub-row">
-      <code id="my-sub-url" class="my-sub-url"></code>
-      <button type="button" id="my-sub-copy" class="btn btn-sm">Копировать</button>
-    </div>
-    <a id="my-sub-open" class="my-sub-open" href="#" rel="nofollow">📲 Открыть в приложении</a>
-  </div>
-</div>
 
 <!-- HERO -->
 <section class="hero">
@@ -105,6 +84,48 @@
       <div class="stat"><div class="k">{{ trial_hours }} ч</div><div class="v">бесплатно без карты</div></div>
       <div class="stat"><div class="k">250 ₽</div><div class="v">месяц безлимита</div></div>
       <div class="stat"><div class="k">RU → напрямую</div><div class="v">банки и госуслуги работают</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- МОЯ ПОДПИСКА — только для узнанного браузера (макет Claude Design 17.07).
+     Место выбрано дизайнером: сразу под hero, до «Платформ». Раньше блок стоял
+     ПЕРВЫМ элементом страницы и перебивал оффер. Не узнали браузер → секции нет
+     вообще (никаких плейсхолдеров и «залогиньтесь»), это большинство посетителей.
+     Наполняется из /api/my-subscription (static/mysub.js). -->
+<section id="my-sub-section" hidden>
+  <div class="container">
+    <div class="mysub">
+      <div class="mysub-top">
+        <div class="mysub-ava">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21a8 8 0 1 0-16 0"/><circle cx="12" cy="11" r="4"/></svg>
+        </div>
+        <div class="mysub-who">
+          <div class="mysub-t">Аккаунт <span id="my-sub-nick"></span></div>
+          <div class="mysub-s" id="my-sub-sub"></div>
+        </div>
+        <span class="mysub-badge" id="my-sub-badge"></span>
+      </div>
+
+      <div class="mysub-linkrow">
+        <span class="mysub-key" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 7a4 4 0 1 0-4 4"/><path d="M11 11 3 19v2h2l1-1h2v-2h2l1.5-1.5"/></svg>
+        </span>
+        <span class="mysub-url" id="my-sub-url"></span>
+        <button type="button" class="mysub-reveal" id="my-sub-reveal" aria-label="Показать ссылку"></button>
+      </div>
+
+      <div class="mysub-expnote" id="my-sub-expnote" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4M12 17h.01M10.3 4l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3L13.7 4a2 2 0 0 0-3.4 0z"/></svg>
+        <div class="mysub-expnote-txt"><b>Подписка неактивна.</b> Продлите — и эта же ссылка снова заработает, новую брать не нужно.</div>
+      </div>
+
+      <div class="mysub-acts">
+        <a class="mysub-btn mysub-btn-primary" id="my-sub-primary" href="#" rel="nofollow"></a>
+        <button type="button" class="mysub-btn mysub-btn-ghost" id="my-sub-copy" aria-label="Скопировать ссылку"></button>
+      </div>
+
+      <div class="mysub-hint" id="my-sub-hint"></div>
     </div>
   </div>
 </section>
@@ -231,7 +252,7 @@
         <ul class="price-list">
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> Всё из «Месяца»</li>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> Один платёж — 1890 ₽</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> Возврат по условиям оферты</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> Вернём деньги за неиспользованные дни</li>
         </ul>
         <a class="btn btn-primary" href="/pay" style="margin-top:auto;justify-content:center">Купить</a>
       </div>
@@ -245,6 +266,10 @@
         </ul>
         <a class="btn btn-ghost" href="#cta" style="margin-top:auto;justify-content:center">Начать сейчас</a>
       </div>
+    </div>
+    <div class="price-guarantee">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+      <span><b>Не подошло — вернём деньги.</b> В первые 24 часа, если не пользовались, — полностью. Позже — за неиспользованные дни подписки. <a href="/refund">Условия возврата</a></span>
     </div>
   </div>
 </section>

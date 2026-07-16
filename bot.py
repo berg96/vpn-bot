@@ -51,7 +51,7 @@ def _stable_sub_url(tg_id: int) -> str:
     отдаёт актуальный sub из Marzban. Продление/смена лимита/ротация
     конфигов — клиент не видит, ссылка та же.
     """
-    return f"{LANDING_BASE_URL}/sub/{sub_tokens.make_sub_token(tg_id)}"
+    return sub_tokens.sub_url(tg_id, base=LANDING_BASE_URL)
 
 
 def _install_url(tg_id: int) -> str:
@@ -123,6 +123,17 @@ def _pay_url(tg_id: int) -> str:
     secret = os.environ.get("PAY_LINK_SECRET", config.BOT_TOKEN[:32])
     sig = hmac.new(secret.encode(), str(tg_id).encode(), hashlib.sha256).hexdigest()[:16]
     return f"{LANDING_BASE_URL}/pay?uid={tg_id}&sig={sig}"
+
+
+# Возврат — главный контраргумент к «а вдруг вы завтра ляжете». Политика (полный
+# возврат в первые 24ч без трафика, дальше пропорционально неиспользованным суткам)
+# существует с запуска и лежит в /refund, но её нигде не видно в момент решения.
+# Показываем ровно там, где человек выбирает тариф. Формулировка не должна
+# расходиться с /refund — это оферта, а не маркетинг.
+REFUND_NOTE = (
+    "\n\n🛡 <i>Не подошло — вернём деньги за неиспользованные дни. "
+    "<a href=\"https://radarshield.mooo.com/refund\">Условия возврата</a></i>"
+)
 
 
 def plans_keyboard(tg_id: int | None = None) -> InlineKeyboardMarkup:
@@ -266,7 +277,7 @@ async def _do_start(tg_id: int, username: str | None, first_name: str | None, an
             logger.error(f"Trial creation failed for {tg_id}: {e}")
             await answer_fn(
                 "🔐 <b>RadarShield — быстро, надёжно, без лишних вопросов</b>\n\n"
-                "Выбери тариф:",
+                "Выбери тариф:" + REFUND_NOTE,
                 parse_mode=ParseMode.HTML,
                 reply_markup=start_keyboard(),
             )
@@ -370,7 +381,7 @@ async def _handle_landing_deeplink(msg: Message, token: str) -> None:
             db.log_event(tg_id, "lp_merge_declined", {"token": token, "reason": "already_received"})
             await msg.answer(
                 "⚠️ <b>Бонус уже получен ранее.</b>\n\n"
-                "Повторно применить нельзя. Для продления подписки выбери тариф:",
+                "Повторно применить нельзя. Для продления подписки выбери тариф:" + REFUND_NOTE,
                 parse_mode=ParseMode.HTML,
                 reply_markup=plans_keyboard(tg_id=tg_id),
             )
@@ -468,6 +479,27 @@ async def _handle_landing_deeplink(msg: Message, token: str) -> None:
         )
 
 
+@dp.callback_query(F.data == "notify_less")
+async def cb_notify_less(call: CallbackQuery):
+    """Кнопка «Реже писать» под маркетинговыми рассылками.
+
+    Мягкий выход вместо блокировки бота: блок = 403 навсегда, а бот — наш
+    единственный канал доставки конфигов и уведомлений об истечении подписки.
+    Опт-аут выключает ТОЛЬКО рассылки: `get_reachable_users()` фильтрует по
+    notify_opt_out, а транзакционные сообщения (оплата, истечение, «обнови
+    профиль») идут мимо кампаний и продолжают приходить.
+    """
+    tg_id = call.from_user.id
+    db.set_notify_opt_out(tg_id, True)
+    db.log_event(tg_id, "notify_opt_out", {})
+
+    await call.answer("Больше не будем присылать рассылки", show_alert=False)
+    try:
+        await call.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass  # сообщение могло быть удалено/изменено — опт-аут уже записан
+
+
 @dp.callback_query(F.data.startswith("lp_merge:"))
 async def cb_lp_merge(call: CallbackQuery):
     token = call.data.split(":", 1)[1]
@@ -495,7 +527,7 @@ async def cb_lp_merge(call: CallbackQuery):
             "⚠️ <b>Бонус +1 день уже получен ранее.</b>\n\n"
             "Актуальная ссылка на твою подписку — в /profile. Используй её на устройстве, "
             "с которого ты пришёл с сайта.\n\n"
-            "Для продления подписки — выбери тариф ниже.",
+            "Для продления подписки — выбери тариф ниже." + REFUND_NOTE,
             parse_mode=ParseMode.HTML,
             reply_markup=plans_keyboard(tg_id=call.from_user.id),
         )
@@ -581,7 +613,7 @@ async def cmd_profile(event: Message | CallbackQuery):
             ])
             text = "👋 Нажми кнопку — активирую бесплатный период на 7 дней и 5 ГБ."
         else:
-            text = "У тебя пока нет активной подписки.\n\nВыбери тариф ниже 👇"
+            text = "У тебя пока нет активной подписки.\n\nВыбери тариф ниже 👇" + REFUND_NOTE
             kb = plans_keyboard(tg_id=tg_id)
     else:
         status = user.get("status", "unknown")
@@ -652,7 +684,8 @@ async def cb_buy(call: CallbackQuery):
 @dp.callback_query(F.data == "back_to_plans")
 async def cb_back(call: CallbackQuery):
     await call.message.edit_text(
-        "Выбери тариф:",
+        "Выбери тариф:" + REFUND_NOTE,
+        parse_mode=ParseMode.HTML,
         reply_markup=plans_keyboard(tg_id=call.from_user.id),
     )
     await call.answer()

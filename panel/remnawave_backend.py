@@ -68,6 +68,12 @@ class RemnawaveBackend(PanelBackend):
     # ── нормализация Remnawave-юзера в Marzban-форму ─────────────────────
     @staticmethod
     def _shape(u: dict) -> dict:
+        # Трафик и онлайн Remnawave отдаёт ВЛОЖЕННО, в объекте `userTraffic`.
+        # Читали их с верхнего уровня → used_traffic всегда 0 у всех, и ноль
+        # неотличим от «трафика правда нет» (тот же класс молчаливой поломки,
+        # что statsUserOnline без CAP_NET_ADMIN). Верхний уровень оставлен как
+        # fallback — на случай, если формат вернётся/различается по версии.
+        traffic = u.get("userTraffic") or {}
         return {
             "username": u.get("username"),
             "status": _STATUS_FROM_RW.get(
@@ -75,7 +81,19 @@ class RemnawaveBackend(PanelBackend):
             ),
             "expire": _iso_to_epoch(u.get("expireAt")),
             "data_limit": u.get("trafficLimitBytes") or 0,
-            "used_traffic": u.get("usedTrafficBytes") or 0,
+            "used_traffic": (
+                traffic.get("usedTrafficBytes") or u.get("usedTrafficBytes") or 0
+            ),
+            "lifetime_traffic": traffic.get("lifetimeUsedTrafficBytes") or 0,
+            # `online_at` — самый дешёвый ответ на «кто сейчас на новом движке»:
+            # не требует сбора IP и покрывает любой протокол.
+            # (Прежняя приписка «xray-статистика онлайн-IP не видит Hysteria2»
+            # неверна — проверено эмпирически 16.07: hy2-клиент под тестовым
+            # юзером появился в ip-control `fetch-users-ips`. Hysteria2 у нас не
+            # отдельный демон, а inbound того же ядра.)
+            "online_at": _iso_to_epoch(traffic.get("onlineAt")),
+            "last_node_uuid": traffic.get("lastConnectedNodeUuid"),
+            "first_connected_at": _iso_to_epoch(traffic.get("firstConnectedAt")),
             "subscription_url": u.get("subscriptionUrl"),
             # служебное (Remnawave-специфика, вызывающему коду не мешает)
             "uuid": u.get("uuid"),
