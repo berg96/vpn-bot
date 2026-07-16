@@ -1015,6 +1015,28 @@ def was_notified(tg_id: int, campaign: str) -> bool:
     return row is not None
 
 
+def notification_count(tg_id: int, campaign: str) -> int:
+    """Сколько раз кампания уходила юзеру. Нужно повторяющимся трекам (не `once`),
+    где вариант текста и предел отправок выбираются по счётчику."""
+    with _conn() as c:
+        row = c.execute(
+            "SELECT count(*) FROM notifications WHERE tg_id=? AND campaign=?", (tg_id, campaign)
+        ).fetchone()
+    return int(row[0]) if row else 0
+
+
+def has_sub_request(tg_id: int) -> bool:
+    """Юзер хоть раз утянул конфиг подписки.
+
+    Ноль запросов при активированном триале = застрял на установке: ссылку выдали,
+    но клиент за ней не пришёл. Обратное неверно — конфиг тянется один раз и дальше
+    живёт в приложении, так что наличие запроса НЕ значит, что человек пользуется.
+    """
+    with _conn() as c:
+        row = c.execute("SELECT 1 FROM sub_requests WHERE tg_id=? LIMIT 1", (tg_id,)).fetchone()
+    return row is not None
+
+
 def marketing_sent_since(tg_id: int, days: int) -> int:
     """Сколько маркетинговых сообщений ушло юзеру за окно — для месячного капа."""
     with _conn() as c:
