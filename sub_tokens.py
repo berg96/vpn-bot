@@ -19,6 +19,20 @@ _SECRET = os.environ["SUB_TOKEN_SECRET"].encode()
 _TG_ID_BYTES = 5  # 40 bits hold ~1.1T — Telegram IDs comfortably fit
 _SIG_BYTES = 16   # 128 bits
 
+#: Имя, под которым подписка ложится в клиент.
+#:
+#: Karing берёт имя профиля ИЗ САМОЙ ССЫЛКИ: фрагмент `#…` → `?remarks=` →
+#: `?name=` → HTML-title → иначе домен (add_profile_by_link_or_content_screen.dart).
+#: Заголовок `content-disposition` он игнорирует — поэтому профиль назывался
+#: «radarshield.mooo.com». Фрагмент на сервер не отправляется, так что для FlClash
+#: (он берёт имя из `content-disposition`) и для остальных клиентов это no-op.
+PROFILE_NAME = "RadarShield"
+
+
+def sub_url(tg_id: int, base: str = "https://radarshield.mooo.com") -> str:
+    """Ссылка подписки для пользователя — с именем профиля во фрагменте."""
+    return f"{base}/sub/{make_sub_token(tg_id)}#{PROFILE_NAME}"
+
 
 def make_sub_token(tg_id: int) -> str:
     """Стабильный токен для пользователя tg_id."""
