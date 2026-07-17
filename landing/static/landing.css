@@ -258,9 +258,13 @@ p.qr-desktop-only{display:block}
    прототипе свои --ok/--line-2 (он верстал автономный файл) — здесь берём наши,
    чтобы карточка не разъезжалась с остальной страницей при смене палитры.
    Секция рендерится только когда браузер узнан (mysub.js снимает [hidden]). */
-.mysub{position:relative;overflow:hidden;max-width:560px;
+/* Утилитарный блок, а не маркетинговая секция: общий section{padding:96px 0}
+   давал 96px сверху ПОВЕРХ hero{padding-bottom:96px} — 192px мёртвого поля.
+   Сверху опираемся на отступ hero, снизу отбиваем от «Платформ». */
+#my-sub-section{padding:0 0 56px}
+.mysub{position:relative;overflow:hidden;
   background:linear-gradient(180deg,var(--panel),rgba(16,32,52,.26));
-  border:1px solid var(--line-2);border-radius:18px;padding:24px 24px 22px}
+  border:1px solid var(--line-2);border-radius:18px;padding:24px 26px 22px}
 .mysub::before{content:"";position:absolute;inset:0;pointer-events:none;
   background:radial-gradient(120% 90% at 100% 0%,rgba(255,183,3,.06),transparent 55%)}
 .mysub-top{display:flex;align-items:center;gap:11px;position:relative;z-index:1}
@@ -285,6 +289,9 @@ p.qr-desktop-only{display:block}
   display:flex;align-items:center;gap:5px;padding:5px 8px;border-radius:7px;flex-shrink:0;min-height:32px}
 .mysub-reveal:hover{color:var(--ink);background:rgba(255,255,255,.05)}
 .mysub-reveal svg{width:15px;height:15px}
+/* display:flex перебивает браузерное [hidden]{display:none} — без этой строки
+   атрибут hidden в разметке не работает и активный юзер видит «Подписка неактивна». */
+.mysub-expnote[hidden]{display:none}
 .mysub-expnote{margin-top:16px;display:flex;gap:11px;position:relative;z-index:1;
   background:rgba(232,161,58,.08);border:1px solid rgba(232,161,58,.25);border-radius:12px;padding:13px 15px}
 .mysub-expnote svg{width:17px;height:17px;color:var(--warn);flex-shrink:0;margin-top:1px}
@@ -295,7 +302,8 @@ p.qr-desktop-only{display:block}
   border-radius:12px;font:700 14.5px 'Manrope';cursor:pointer;border:1px solid transparent;
   transition:all .15s;white-space:nowrap;min-height:48px}
 .mysub-btn svg{width:17px;height:17px;flex-shrink:0}
-.mysub-btn-primary{flex:1;background:var(--accent);color:#1a1208}
+/* На всю сетку (1200px) flex:1 растянул бы primary до ~1030px. Кап по базису. */
+.mysub-btn-primary{flex:0 1 300px;background:var(--accent);color:#1a1208}
 .mysub-btn-primary:hover{filter:brightness(1.06)}
 .mysub-btn-ghost{flex:0 0 auto;background:transparent;color:var(--ink);border-color:var(--line-2)}
 .mysub-btn-ghost:hover{border-color:rgba(255,255,255,.28);background:rgba(255,255,255,.04)}
