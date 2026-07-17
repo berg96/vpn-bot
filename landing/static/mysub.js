@@ -74,7 +74,8 @@
 
         function paintUrl() {
           urlEl.textContent = revealed ? d.sub_url : masked(d.sub_url);
-          revealBtn.innerHTML = svg(revealed ? 'eyeoff' : 'eye') + (revealed ? 'скрыть' : 'показать');
+          revealBtn.innerHTML = svg(revealed ? 'eyeoff' : 'eye') +
+            '<span class="mysub-linkbtn-lbl">' + (revealed ? 'скрыть' : 'показать') + '</span>';
           revealBtn.setAttribute('aria-label', revealed ? 'Скрыть ссылку' : 'Показать ссылку');
         }
         paintUrl();
