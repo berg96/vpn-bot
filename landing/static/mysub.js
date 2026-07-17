@@ -95,18 +95,12 @@
             '<a href="/#apps">скачайте клиент</a>, затем скопируйте ссылку и вставьте вручную.';
         }
 
-        copyBtn.innerHTML = svg('copy');
-        copyBtn.addEventListener('click', function () {
-          var done = function () {
-            copyBtn.classList.add('is-copied');
-            copyBtn.innerHTML = svg('check', 2.4);
-            setTimeout(function () {
-              copyBtn.classList.remove('is-copied');
-              copyBtn.innerHTML = svg('copy');
-            }, 1500);
-          };
+        // Две кнопки копирования: в поле ссылки (десктоп) и крупная внизу под
+        // primary (мобилка, где иконка в поле — слишком мелкая тап-цель).
+        // Видимостью рулит CSS по брейкпоинту; логика копирования — одна.
+        function doCopy(cb) {
           if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(d.sub_url).then(done, done);
+            navigator.clipboard.writeText(d.sub_url).then(cb, cb);
           } else {
             try {
               var range = document.createRange();
@@ -117,9 +111,29 @@
               document.execCommand('copy');
               sel.removeAllRanges();
             } catch (_) {}
-            done();
+            cb();
           }
-        });
+        }
+        function bindCopy(btn, idle, copied) {
+          btn.innerHTML = idle;
+          btn.addEventListener('click', function () {
+            doCopy(function () {
+              btn.classList.add('is-copied');
+              btn.innerHTML = copied;
+              setTimeout(function () {
+                btn.classList.remove('is-copied');
+                btn.innerHTML = idle;
+              }, 1500);
+            });
+          });
+        }
+        bindCopy(copyBtn, svg('copy'), svg('check', 2.4));
+        var copyBottom = document.getElementById('my-sub-copy-bottom');
+        if (copyBottom) {
+          bindCopy(copyBottom,
+            svg('copy') + 'Скопировать ссылку',
+            svg('check', 2.4) + 'Скопировано');
+        }
 
         section.hidden = false;
 

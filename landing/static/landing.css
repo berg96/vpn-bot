@@ -307,6 +307,10 @@ p.qr-desktop-only{display:block}
 /* На всю сетку (1200px) flex:1 растянул бы primary до ~1030px. Кап по базису. */
 .mysub-btn-primary{flex:0 1 300px;background:var(--accent);color:#1a1208}
 .mysub-btn-primary:hover{filter:brightness(1.06)}
+/* Копирование внизу — только на мобилке (десктоп копирует из поля ссылки). */
+.mysub-copy-bottom{display:none;background:transparent;color:var(--ink);border-color:var(--line-2)}
+.mysub-copy-bottom:hover{border-color:rgba(255,255,255,.28);background:rgba(255,255,255,.04)}
+.mysub-copy-bottom.is-copied{background:rgba(131,208,67,.16);color:var(--ok);border-color:rgba(131,208,67,.4)}
 .mysub-hint{margin-top:12px;font-size:12.5px;color:var(--ink-mute);line-height:1.5;position:relative;z-index:1}
 .mysub-hint a{color:var(--ink-dim);border-bottom:1px dashed var(--ink-mute)}
 .mysub-hint a:hover{color:var(--ink)}
@@ -318,8 +322,13 @@ p.qr-desktop-only{display:block}
 @media (max-width:560px){
   .mysub{padding:20px 18px 18px}
   .nav-mysub{display:none}  /* в узкой шапке не помещается — блок и так под hero */
-  /* Две кнопки в поле ссылки съедают ширину, и маска обрезается до «https://radars…»,
-     тогда как её смысл — показать домен. Оставляем иконку, подпись убираем. */
+  /* Копирование уходит из поля вниз крупной кнопкой. В поле остаётся «показать»,
+     но подпись прячем: на 390px домен маски иначе режется до «radarshield…»,
+     а показать домен целиком — весь смысл маски. Иконка глаза узнаётся и так. */
+  .mysub-copy{display:none}
   .mysub-linkbtn-lbl{display:none}
   .mysub-linkbtn{padding:5px 6px}
+  .mysub-acts{flex-direction:column;align-items:stretch}
+  .mysub-btn-primary{flex:0 0 auto}
+  .mysub-copy-bottom{display:inline-flex}
 }
