@@ -129,11 +129,7 @@
         }
         bindCopy(copyBtn, svg('copy'), svg('check', 2.4));
         var copyBottom = document.getElementById('my-sub-copy-bottom');
-        if (copyBottom) {
-          bindCopy(copyBottom,
-            svg('copy') + 'Скопировать ссылку',
-            svg('check', 2.4) + 'Скопировано');
-        }
+        if (copyBottom) bindCopy(copyBottom, svg('copy'), svg('check', 2.4));
 
         section.hidden = false;
 
