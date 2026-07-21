@@ -10,9 +10,10 @@
   В Telegram цена ошибки выше, чем в email: блок бота = 403 навсегда, а это наш
   канал доставки конфигов и поддержки. Заблокировавший платящий не узнает об
   истечении подписки → не продлит. Блок стоит нам выручки, а не контакта.
-* **403 → замолкаем, но не навсегда.** `bot_blocked=1` + время; юзер выпадает из
-  выборок на `db.BLOCK_RETRY_DAYS`, потом снова пробуем (мог разблокировать). Дошло —
-  блок снимается.
+* **403 → не долбим ОДНИМ пушем, но юзера не хороним.** Попытка помечается в
+  notifications (`kind='blocked'`), поэтому тот же пуш не повторяется, а месячный
+  кап не тратится → другие/будущие кампании к юзеру идут как обычно (мог
+  разблокировать). Из выборки заблокировавших не исключаем — только по opt-out.
 * **429 → ждём `retry_after`** (единственный корректный способ, Bot API).
 * **Троттлинг 20 msg/s** — запас к лимиту Telegram (30/s).
 * **Выход мягче блока.** У каждого маркетингового сообщения — кнопка «Реже писать».
@@ -140,10 +141,14 @@ def send(token: str, campaign: Campaign, dry_run: bool = True,
                 time.sleep(retry_after)
                 continue
             if status == "sent":
-                db.mark_bot_blocked(tg_id, False)  # дошло → снимаем прежний блок, если был
+                db.mark_bot_blocked(tg_id, False)  # дошло → снимаем прежний флаг блока
                 db.log_notification(tg_id, campaign.name, campaign.kind, campaign.meta)
                 stats["sent"] += 1
             elif status == "blocked":
+                # Помечаем ПОПЫТКУ, чтобы не долбить этим же пушем (was_notified в
+                # eligible). kind='blocked', а НЕ campaign.kind: маркетинговый кап
+                # не съедаем — другие кампании к юзеру должны идти как обычно.
+                db.log_notification(tg_id, campaign.name, "blocked", campaign.meta)
                 db.mark_bot_blocked(tg_id)
                 stats["blocked"] += 1
             else:

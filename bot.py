@@ -108,10 +108,11 @@ class ActivityMiddleware(BaseMiddleware):
             user = data.get("event_from_user")
             if user and db.user_exists(user.id):
                 db.touch_user(user.id)
-                # Держим TG-username свежим: record_user пишет его один раз (INSERT OR
-                # IGNORE), а поиск на сайте/whois идёт по нему. set_username пишет в БД
-                # только при реальном изменении, так что хот-путь остаётся дешёвым.
+                # Держим ник и имя свежими: record_user пишет их один раз (INSERT OR
+                # IGNORE), а поиск на сайте/whois и опознание в поддержке идут по ним.
+                # Обе пишут в БД только при изменении — хот-путь остаётся дешёвым.
                 db.set_username(user.id, user.username)
+                db.set_first_name(user.id, user.first_name)
         except Exception as e:
             logger.debug(f"activity middleware (touch/username) failed: {e}")
         return await handler(event, data)
@@ -1241,8 +1242,15 @@ async def _check_expire_reminders() -> int:
             await _send_expire_reminder(tg_id, hours_left, label)
             db.log_event(tg_id, f"reminder_{label}", {"expire": expire})
             sent += 1
+        except TelegramForbiddenError:
+            # Заблокировал бота — доставить нельзя. Помечаем ЭТОТ порог как
+            # отработанный, чтобы не пытаться им каждый час; другие пороги
+            # (1d/2h/expired) сработают, когда подойдёт их срок. mark_bot_blocked —
+            # только для опознания в поддержке, из выборок не исключает.
+            db.log_event(tg_id, f"reminder_{label}", {"expire": expire, "blocked": True})
+            db.mark_bot_blocked(tg_id)
         except Exception as e:
-            logger.error(f"reminder send to {tg_id} failed: {e}")
+            logger.error(f"reminder send to {tg_id} failed: {e}")  # транзиент — ретрай
 
     return sent
 
@@ -1328,6 +1336,9 @@ async def _sync_usernames_once() -> tuple[int, int]:
         checked += 1
         if db.set_username(tg_id, chat.username):
             updated += 1
+        # Заодно бэкфиллим имя — так у безникных «спящих» появляется опознавалка
+        # в поддержке без ожидания, пока они сами напишут боту.
+        db.set_first_name(tg_id, chat.first_name)
         await asyncio.sleep(0.2)  # мягкий троттлинг к Bot API
     return checked, updated
 

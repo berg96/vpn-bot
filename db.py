@@ -237,10 +237,10 @@ def init_db():
             c.execute("ALTER TABLE users ADD COLUMN notify_opt_out INTEGER NOT NULL DEFAULT 0")
         if "bot_blocked" not in ucols:
             c.execute("ALTER TABLE users ADD COLUMN bot_blocked INTEGER NOT NULL DEFAULT 0")
-        # Когда поймали 403. Блок НЕ вечен: юзер мог разблокировать бота, поэтому
-        # get_reachable_users прячет его лишь на BLOCK_RETRY_DAYS, а не навсегда.
-        if "bot_blocked_at" not in ucols:
-            c.execute("ALTER TABLE users ADD COLUMN bot_blocked_at TEXT")
+        # Имя (не @username) — опознание в поддержке тех, у кого ника нет вовсе:
+        # по нику их не найти, а «просто tg_id» support-оператору ничего не говорит.
+        if "first_name" not in ucols:
+            c.execute("ALTER TABLE users ADD COLUMN first_name TEXT")
 
 
 def record_user(tg_id: int, username: str | None) -> bool:
@@ -283,25 +283,62 @@ def get_username_by_tg_id(tg_id: int) -> str | None:
 
 
 def set_username(tg_id: int, username: str | None) -> bool:
-    """Обновить сохранённый TG-username, если он изменился (в т.ч. на пустой — юзер
-    снял @username). → True при реальном изменении.
+    """Обновить сохранённый TG-username. → True при реальном изменении.
 
     Зачем: record_user пишет ник через INSERT OR IGNORE — один раз при первом /start
-    и больше никогда. Поиск на сайте (find_user_by_username) и whois идут по этому
-    нику, поэтому сменивший/снявший username переставал находиться. Синк держит его
-    свежим (middleware на каждом апдейте + фоновый getChat-обход для «спящих»).
+    и больше никогда. Ник — ключ самообслуживания оплаты (find_user_by_username) и
+    опознания в поддержке. Поэтому:
 
-    Храним без ведущего @; пустую строку → NULL, чтобы поиск не матчил пустой ник.
-    Регистр не нормализуем (поиск и так LOWER()).
+    * Ник СНЯТ (пусто/None) — НЕ обнуляем: оставляем ПОСЛЕДНИЙ известный, чтобы юзер/
+      поддержка ещё могли найти аккаунт. Актуальность гарантирует пункт ниже.
+    * Ник ЗАДАН — записываем; и «отбираем» его у другого нашего юзера, за которым он
+      числился устаревшей записью (человек снял @foo → кто-то другой занял @foo):
+      Telegram-ники глобально уникальны, значит текущий владелец — этот tg_id, а у
+      прежнего ник обнуляем, иначе поиск увёл бы не к тому.
+
+    Храним без ведущего '@'; регистр не нормализуем (поиск и так через LOWER()).
     """
     uname = (username or "").lstrip("@").strip() or None
+    if not uname:
+        return False  # ник снят — храним последний известный, не затираем
+    with _conn() as c:
+        row = c.execute("SELECT username FROM users WHERE tg_id=?", (tg_id,)).fetchone()
+        current = row[0] if row else None
+        if current is not None and current.lower() == uname.lower():
+            return False  # без изменений — hot-path no-op, ничего не пишем
+        # Отбираем ник у прежнего владельца (устаревшая запись за другим tg_id).
+        c.execute(
+            "UPDATE users SET username=NULL WHERE LOWER(username)=LOWER(?) AND tg_id<>?",
+            (uname, tg_id),
+        )
+        c.execute("UPDATE users SET username=? WHERE tg_id=?", (uname, tg_id))
+        return True
+
+
+def set_first_name(tg_id: int, first_name: str | None) -> bool:
+    """Сохранить/обновить имя (не @username). → True при изменении.
+
+    В отличие от username, имя — не поисковый ключ, а атрибут опознания в поддержке
+    (для тех, у кого ника нет). Коллизий/«отбора» нет — просто держим свежим. Пишем
+    только при изменении (hot-path)."""
+    name = (first_name or "").strip() or None
     with _conn() as c:
         cur = c.execute(
-            "UPDATE users SET username=? "
-            "WHERE tg_id=? AND COALESCE(username,'') <> COALESCE(?,'')",
-            (uname, tg_id, uname),
+            "UPDATE users SET first_name=? "
+            "WHERE tg_id=? AND COALESCE(first_name,'') <> COALESCE(?,'')",
+            (name, tg_id, name),
         )
         return cur.rowcount > 0
+
+
+def get_user_identity(tg_id: int) -> dict:
+    """{username, first_name} — для карточки поддержки (опознать человека)."""
+    with _conn() as c:
+        row = c.execute(
+            "SELECT username, first_name FROM users WHERE tg_id=?", (tg_id,)
+        ).fetchone()
+    return ({"username": row[0], "first_name": row[1]} if row
+            else {"username": None, "first_name": None})
 
 
 def all_user_ids() -> list[int]:
@@ -1109,44 +1146,27 @@ def set_notify_opt_out(tg_id: int, value: bool = True) -> None:
         c.execute("UPDATE users SET notify_opt_out=? WHERE tg_id=?", (1 if value else 0, tg_id))
 
 
-#: Сколько дней держим заблокировавшего вне выборок, прежде чем попробовать снова.
-#: 403 не вечен — человек мог разблокировать бота. Совпадает с месячным капом
-#: маркетинга: раньше окна пробовать смысла нет (там всё равно кап), позже —
-#: значит забыли навсегда, чего мы и не хотим.
-BLOCK_RETRY_DAYS = 30
-
-
 def mark_bot_blocked(tg_id: int, value: bool = True) -> None:
-    """403 от Telegram = юзер заблокировал бота.
-
-    value=True — метим блок и время (`bot_blocked_at`): в текущей рассылке больше
-    не трогаем, но через BLOCK_RETRY_DAYS get_reachable_users вернёт его в выборку —
-    вдруг разблокировал. value=False — успешная доставка сняла блок (только если он
-    стоял, лишних записей не плодим)."""
+    """403 от Telegram = юзер заблокировал бота — записываем факт (для статистики/
+    опознания в поддержке). НЕ исключаем его из будущих рассылок: другой пуш через
+    день/неделю всё равно надо попытаться доставить (вдруг уже разблокировал). Чтобы
+    не долбить ОДНИМ И ТЕМ ЖЕ пушем — попытка помечается в notifications
+    (см. campaigns.send), а не флагом блока."""
     with _conn() as c:
-        if value:
-            c.execute("UPDATE users SET bot_blocked=1, bot_blocked_at=? WHERE tg_id=?",
-                      (_now_iso(), tg_id))
-        else:
-            c.execute("UPDATE users SET bot_blocked=0, bot_blocked_at=NULL "
-                      "WHERE tg_id=? AND COALESCE(bot_blocked,0)=1", (tg_id,))
+        c.execute("UPDATE users SET bot_blocked=? WHERE tg_id=?", (1 if value else 0, tg_id))
 
 
 def get_reachable_users() -> list[dict]:
-    """Кому можно писать: не отписались и не в СВЕЖЕМ блоке.
+    """Кому можно писать: все, кто не отписался от рассылок (opt-out).
 
-    Блок не вечен — заблокировавший возвращается в выборку через BLOCK_RETRY_DAYS
-    (мог разблокировать бота). Если всё ещё блочит — следующий 403 обновит
-    `bot_blocked_at`, и он снова уедет на месяц. Legacy-строки с bot_blocked=1 без
-    времени (`bot_blocked_at IS NULL`) считаем «пора пробовать» — им тоже дадим шанс.
+    Заблокировавших бота НЕ прячем: повтор одного пуша душит идемпотентность
+    (was_notified в eligible()), а другие/будущие кампании к ним пойдут как обычно —
+    человек мог разблокировать. Единственный жёсткий стоп — явный opt-out.
     """
-    cutoff = _iso_ago(BLOCK_RETRY_DAYS)
     with _conn() as c:
         rows = c.execute(
             "SELECT tg_id, username, mz_username, first_seen, last_seen, trial_activated "
-            "FROM users WHERE COALESCE(notify_opt_out,0)=0 "
-            "AND (COALESCE(bot_blocked,0)=0 OR COALESCE(bot_blocked_at,'') < ?)",
-            (cutoff,),
+            "FROM users WHERE COALESCE(notify_opt_out,0)=0"
         ).fetchall()
     return [
         {"tg_id": r[0], "username": r[1], "mz_username": r[2],

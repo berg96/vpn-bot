@@ -796,6 +796,8 @@ async def internal_user_info(request: Request, tg_id: int = 0):
         return {"found": False}
 
     out: dict = {"found": True, "mz_username": mz_username}
+    # Ник + имя для опознания человека: у безникных ник пуст, тогда ориентир — имя.
+    out.update(db.get_user_identity(tg_id))
     try:
         user = await panel.get_user(tg_id, mz_username)
     except Exception as e:
