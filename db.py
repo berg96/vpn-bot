@@ -237,6 +237,10 @@ def init_db():
             c.execute("ALTER TABLE users ADD COLUMN notify_opt_out INTEGER NOT NULL DEFAULT 0")
         if "bot_blocked" not in ucols:
             c.execute("ALTER TABLE users ADD COLUMN bot_blocked INTEGER NOT NULL DEFAULT 0")
+        # Когда поймали 403. Блок НЕ вечен: юзер мог разблокировать бота, поэтому
+        # get_reachable_users прячет его лишь на BLOCK_RETRY_DAYS, а не навсегда.
+        if "bot_blocked_at" not in ucols:
+            c.execute("ALTER TABLE users ADD COLUMN bot_blocked_at TEXT")
 
 
 def record_user(tg_id: int, username: str | None) -> bool:
@@ -276,6 +280,34 @@ def get_username_by_tg_id(tg_id: int) -> str | None:
             "SELECT username FROM users WHERE tg_id=?", (tg_id,)
         ).fetchone()
         return row[0] if row else None
+
+
+def set_username(tg_id: int, username: str | None) -> bool:
+    """Обновить сохранённый TG-username, если он изменился (в т.ч. на пустой — юзер
+    снял @username). → True при реальном изменении.
+
+    Зачем: record_user пишет ник через INSERT OR IGNORE — один раз при первом /start
+    и больше никогда. Поиск на сайте (find_user_by_username) и whois идут по этому
+    нику, поэтому сменивший/снявший username переставал находиться. Синк держит его
+    свежим (middleware на каждом апдейте + фоновый getChat-обход для «спящих»).
+
+    Храним без ведущего @; пустую строку → NULL, чтобы поиск не матчил пустой ник.
+    Регистр не нормализуем (поиск и так LOWER()).
+    """
+    uname = (username or "").lstrip("@").strip() or None
+    with _conn() as c:
+        cur = c.execute(
+            "UPDATE users SET username=? "
+            "WHERE tg_id=? AND COALESCE(username,'') <> COALESCE(?,'')",
+            (uname, tg_id, uname),
+        )
+        return cur.rowcount > 0
+
+
+def all_user_ids() -> list[int]:
+    """Все tg_id — для фонового синка username (getChat по каждому)."""
+    with _conn() as c:
+        return [int(r[0]) for r in c.execute("SELECT tg_id FROM users").fetchall()]
 
 
 def set_mz_username(tg_id: int, mz_username: str):
@@ -1077,18 +1109,44 @@ def set_notify_opt_out(tg_id: int, value: bool = True) -> None:
         c.execute("UPDATE users SET notify_opt_out=? WHERE tg_id=?", (1 if value else 0, tg_id))
 
 
+#: Сколько дней держим заблокировавшего вне выборок, прежде чем попробовать снова.
+#: 403 не вечен — человек мог разблокировать бота. Совпадает с месячным капом
+#: маркетинга: раньше окна пробовать смысла нет (там всё равно кап), позже —
+#: значит забыли навсегда, чего мы и не хотим.
+BLOCK_RETRY_DAYS = 30
+
+
 def mark_bot_blocked(tg_id: int, value: bool = True) -> None:
-    """403 от Telegram = юзер заблокировал бота. Ретраить бессмысленно."""
+    """403 от Telegram = юзер заблокировал бота.
+
+    value=True — метим блок и время (`bot_blocked_at`): в текущей рассылке больше
+    не трогаем, но через BLOCK_RETRY_DAYS get_reachable_users вернёт его в выборку —
+    вдруг разблокировал. value=False — успешная доставка сняла блок (только если он
+    стоял, лишних записей не плодим)."""
     with _conn() as c:
-        c.execute("UPDATE users SET bot_blocked=? WHERE tg_id=?", (1 if value else 0, tg_id))
+        if value:
+            c.execute("UPDATE users SET bot_blocked=1, bot_blocked_at=? WHERE tg_id=?",
+                      (_now_iso(), tg_id))
+        else:
+            c.execute("UPDATE users SET bot_blocked=0, bot_blocked_at=NULL "
+                      "WHERE tg_id=? AND COALESCE(bot_blocked,0)=1", (tg_id,))
 
 
 def get_reachable_users() -> list[dict]:
-    """Кому вообще можно писать: не заблокировали бота и не отписались."""
+    """Кому можно писать: не отписались и не в СВЕЖЕМ блоке.
+
+    Блок не вечен — заблокировавший возвращается в выборку через BLOCK_RETRY_DAYS
+    (мог разблокировать бота). Если всё ещё блочит — следующий 403 обновит
+    `bot_blocked_at`, и он снова уедет на месяц. Legacy-строки с bot_blocked=1 без
+    времени (`bot_blocked_at IS NULL`) считаем «пора пробовать» — им тоже дадим шанс.
+    """
+    cutoff = _iso_ago(BLOCK_RETRY_DAYS)
     with _conn() as c:
         rows = c.execute(
             "SELECT tg_id, username, mz_username, first_seen, last_seen, trial_activated "
-            "FROM users WHERE COALESCE(bot_blocked,0)=0 AND COALESCE(notify_opt_out,0)=0"
+            "FROM users WHERE COALESCE(notify_opt_out,0)=0 "
+            "AND (COALESCE(bot_blocked,0)=0 OR COALESCE(bot_blocked_at,'') < ?)",
+            (cutoff,),
         ).fetchall()
     return [
         {"tg_id": r[0], "username": r[1], "mz_username": r[2],

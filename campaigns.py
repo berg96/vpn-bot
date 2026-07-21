@@ -10,7 +10,9 @@
   В Telegram цена ошибки выше, чем в email: блок бота = 403 навсегда, а это наш
   канал доставки конфигов и поддержки. Заблокировавший платящий не узнает об
   истечении подписки → не продлит. Блок стоит нам выручки, а не контакта.
-* **403 → перестаём писать.** `bot_blocked=1`, юзер выпадает из всех выборок.
+* **403 → замолкаем, но не навсегда.** `bot_blocked=1` + время; юзер выпадает из
+  выборок на `db.BLOCK_RETRY_DAYS`, потом снова пробуем (мог разблокировать). Дошло —
+  блок снимается.
 * **429 → ждём `retry_after`** (единственный корректный способ, Bot API).
 * **Троттлинг 20 msg/s** — запас к лимиту Telegram (30/s).
 * **Выход мягче блока.** У каждого маркетингового сообщения — кнопка «Реже писать».
@@ -65,14 +67,21 @@ def _keyboard(campaign: Campaign, user: dict) -> dict | None:
     return {"inline_keyboard": rows} if rows else None
 
 
-def eligible(campaign: Campaign) -> list[dict]:
-    """Кому реально уйдёт: после отсева по блоку, opt-out, капу, идемпотентности."""
+def eligible(campaign: Campaign, ignore_cap: bool = False) -> list[dict]:
+    """Кому реально уйдёт: после отсева по блоку, opt-out, капу, идемпотентности.
+
+    ignore_cap=True снимает ТОЛЬКО 30-дневный кап маркетинга — для разового бласта,
+    который Артём утвердил осознанно. Идемпотентность (`once`) и opt-out не снимаются
+    никогда. Через крон с этим флагом не ходить: кап и существует, чтобы автоматика
+    не долбила людей.
+    """
     out = []
     for u in campaign.recipients():
         tg_id = u["tg_id"]
         if campaign.once and db.was_notified(tg_id, campaign.name):
             continue
-        if campaign.kind == "marketing" and db.marketing_sent_since(tg_id, MARKETING_CAP_DAYS) > 0:
+        if (not ignore_cap and campaign.kind == "marketing"
+                and db.marketing_sent_since(tg_id, MARKETING_CAP_DAYS) > 0):
             continue
         out.append(u)
     return out
@@ -111,9 +120,10 @@ def _send_one(token: str, tg_id: int, text: str, kb: dict | None) -> tuple[str, 
     return "failed", 0.0
 
 
-def send(token: str, campaign: Campaign, dry_run: bool = True) -> dict:
+def send(token: str, campaign: Campaign, dry_run: bool = True,
+         ignore_cap: bool = False) -> dict:
     """Отправка. dry_run=True (по умолчанию) не шлёт ничего — только считает."""
-    users = eligible(campaign)
+    users = eligible(campaign, ignore_cap=ignore_cap)
     stats = {"eligible": len(users), "sent": 0, "blocked": 0, "failed": 0, "dry_run": dry_run}
     if dry_run:
         return stats
@@ -130,6 +140,7 @@ def send(token: str, campaign: Campaign, dry_run: bool = True) -> dict:
                 time.sleep(retry_after)
                 continue
             if status == "sent":
+                db.mark_bot_blocked(tg_id, False)  # дошло → снимаем прежний блок, если был
                 db.log_notification(tg_id, campaign.name, campaign.kind, campaign.meta)
                 stats["sent"] += 1
             elif status == "blocked":

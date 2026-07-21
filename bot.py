@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import os
 from typing import Any, Awaitable, Callable
 import aiohttp
 from datetime import datetime, timezone
@@ -13,6 +12,9 @@ from aiogram.types import (
 )
 from aiogram.filters import CommandStart, Command, CommandObject
 from aiogram.enums import ParseMode
+from aiogram.exceptions import (
+    TelegramRetryAfter, TelegramForbiddenError, TelegramBadRequest,
+)
 
 import config
 import db
@@ -106,8 +108,12 @@ class ActivityMiddleware(BaseMiddleware):
             user = data.get("event_from_user")
             if user and db.user_exists(user.id):
                 db.touch_user(user.id)
+                # Держим TG-username свежим: record_user пишет его один раз (INSERT OR
+                # IGNORE), а поиск на сайте/whois идёт по нему. set_username пишет в БД
+                # только при реальном изменении, так что хот-путь остаётся дешёвым.
+                db.set_username(user.id, user.username)
         except Exception as e:
-            logger.debug(f"touch_user failed: {e}")
+            logger.debug(f"activity middleware (touch/username) failed: {e}")
         return await handler(event, data)
 
 
@@ -118,11 +124,12 @@ dp.callback_query.middleware(ActivityMiddleware())
 # ── Клавиатуры ──────────────────────────────────────────────────────────────
 
 def _pay_url(tg_id: int) -> str:
-    """Подписанная ссылка на страницу оплаты — защищает от подстановки чужого tg_id."""
-    import hmac, hashlib
-    secret = os.environ.get("PAY_LINK_SECRET", config.BOT_TOKEN[:32])
-    sig = hmac.new(secret.encode(), str(tg_id).encode(), hashlib.sha256).hexdigest()[:16]
-    return f"{LANDING_BASE_URL}/pay?uid={tg_id}&sig={sig}"
+    """Подписанная ссылка на страницу оплаты — защищает от подстановки чужого tg_id.
+
+    Подпись — единый канон `sub_tokens.make_pay_sig` (тот же секрет и алгоритм, что
+    у лендинга), а не локальная копия HMAC: одно место правды на все ссылки оплаты.
+    """
+    return f"{LANDING_BASE_URL}/pay?uid={tg_id}&sig={sub_tokens.make_pay_sig(tg_id)}"
 
 
 # Возврат — главный контраргумент к «а вдруг вы завтра ляжете». Политика (полный
@@ -1290,6 +1297,53 @@ async def _expire_reminders_loop():
         await asyncio.sleep(EXPIRE_REMINDERS_INTERVAL)
 
 
+# ── Синк Telegram-username ────────────────────────────────────────────────────
+# Поиск юзера на сайте/whois идёт по нику (find_user_by_username), а record_user
+# пишет ник один раз (INSERT OR IGNORE). Активных ловит middleware на каждом
+# апдейте; «спящих», сменивших/снявших ник и не писавших боту, — этот обход:
+# getChat отдаёт актуальный username по всем, с кем у бота есть чат. Ник меняют
+# редко → раз в 6 часов достаточно, а set_username пишет только при изменении.
+
+USERNAME_SYNC_INTERVAL = 6 * 3600
+
+
+async def _sync_usernames_once() -> tuple[int, int]:
+    """Обойти всех, дотянуть свежий username из getChat. → (проверено, обновлено).
+
+    getChat работает по тем, с кем у бота есть чат (кто хоть раз писал) — их и ищут
+    на сайте. 'chat not found' / 403 у остальных просто пропускаем: тянуть нечего.
+    """
+    checked = updated = 0
+    for tg_id in db.all_user_ids():
+        try:
+            chat = await bot.get_chat(tg_id)
+        except TelegramRetryAfter as e:
+            await asyncio.sleep(e.retry_after + 1)
+            continue
+        except (TelegramForbiddenError, TelegramBadRequest):
+            continue  # заблокировал / удалён / бот с ним не переписывался
+        except Exception as e:
+            logger.debug(f"username sync get_chat {tg_id}: {e}")
+            continue
+        checked += 1
+        if db.set_username(tg_id, chat.username):
+            updated += 1
+        await asyncio.sleep(0.2)  # мягкий троттлинг к Bot API
+    return checked, updated
+
+
+async def _username_sync_loop():
+    await asyncio.sleep(120)  # не бить API на старте — дать боту прогреться
+    while True:
+        try:
+            checked, updated = await _sync_usernames_once()
+            if updated:
+                logger.info(f"username sync: проверено {checked}, обновлено {updated}")
+        except Exception as e:
+            logger.error(f"username sync loop error: {e}")
+        await asyncio.sleep(USERNAME_SYNC_INTERVAL)
+
+
 @dp.message(Command("nodes"))
 async def cmd_nodes(msg: Message):
     """Показывает статус всех нод панели — только для админа."""
@@ -1335,6 +1389,7 @@ async def main():
     logger.info("Bot starting...")
     asyncio.create_task(_node_health_loop())
     asyncio.create_task(_expire_reminders_loop())
+    asyncio.create_task(_username_sync_loop())
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
 
 
