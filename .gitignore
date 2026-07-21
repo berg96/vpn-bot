@@ -1,5 +1,6 @@
 # Secrets
 .env
+.env.bak*
 data/
 
 # Internal planning notes (not for public)
