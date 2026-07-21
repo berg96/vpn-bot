@@ -34,6 +34,20 @@ def sub_url(tg_id: int, base: str = "https://radarshield.mooo.com") -> str:
     return f"{base}/sub/{make_sub_token(tg_id)}#{PROFILE_NAME}"
 
 
+def make_pay_sig(uid) -> str:
+    """Подпись персональной ссылки (`?uid=&sig=`) — защита от подстановки чужого tg_id.
+
+    Секрет отдельный от SUB_TOKEN_SECRET: ссылка живёт в письмах и переписке,
+    компрометация не должна давать доступ к подписке.
+    """
+    secret = os.environ.get("PAY_LINK_SECRET", os.environ.get("BOT_TOKEN", "")[:32])
+    return hmac.new(secret.encode(), str(uid).encode(), hashlib.sha256).hexdigest()[:16]
+
+
+def verify_pay_sig(uid, sig: str) -> bool:
+    return hmac.compare_digest(str(sig), make_pay_sig(uid))
+
+
 def make_sub_token(tg_id: int) -> str:
     """Стабильный токен для пользователя tg_id."""
     if tg_id < 0 or tg_id >= 1 << (_TG_ID_BYTES * 8):

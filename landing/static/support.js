@@ -1125,7 +1125,13 @@
       apiInit().then(function () { openStream(); }).catch(function () {});
     }
     // Распознаём аккаунт по browser_id — для текста облачка и полоски «это вы?».
-    fetchIdentity();
+    fetchIdentity().then(renderIdentityStrip);
+    // Переход по персональной ссылке из рассылки: link.js привязывает браузер уже
+    // после нашего запроса выше, поэтому ждём его сигнал и перезапрашиваем —
+    // иначе человек был бы узнан только со следующей загрузки страницы.
+    window.addEventListener('rs:browser-linked', function () {
+      fetchIdentity().then(renderIdentityStrip);
+    });
     schedulePromo();
   }
 

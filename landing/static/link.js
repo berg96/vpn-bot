@@ -37,6 +37,13 @@
           sig: L.sig,
           source: L.source || 'page',
         }),
+      }).then(function (r) {
+        // Чат (support.js) запрашивает /api/whois независимо и на первом заходе
+        // обычно опережает эту привязку — тогда он не узнаёт человека до
+        // перезагрузки. Сообщаем ему, что аккаунт появился, чтобы перезапросил.
+        if (r && r.ok) {
+          try { window.dispatchEvent(new CustomEvent('rs:browser-linked')); } catch (_) {}
+        }
       }).catch(function () {});
     } catch (_) {}
   }

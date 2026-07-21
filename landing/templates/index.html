@@ -437,4 +437,8 @@ window.addEventListener('load', function() {
   });
 })();
 </script>
+{% if link_uid %}
+<script>window.RS_LINK = {uid: {{ link_uid|tojson }}, sig: {{ link_sig|tojson }}, source: 'campaign'};</script>
+<script src="/static/link.js"></script>
+{% endif %}
 {% endblock %}

@@ -359,18 +359,26 @@ def _sub_summary(u: dict) -> dict:
 
 
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
+async def index(request: Request, uid: str = "", sig: str = ""):
     existing_token = request.cookies.get("lp_token")
     active_token = None
     if existing_token:
         lead = db.get_landing_lead(existing_token)
         if lead and _is_lead_active(lead) and lead.get("claimed_tg_id") is None:
             active_token = existing_token
+    # Персональная ссылка на главную (?uid=&sig=) — та же подпись, что у /pay.
+    # Даёт link.js подписанный uid, чтобы браузер тихо привязался к аккаунту:
+    # человек пришёл из нашей рассылки → поддержка на сайте сразу видит, кто он.
+    # До этого RS_LINK отдавали только /pay и /open/{token}, и кнопка «Открыть
+    # сайт» в кампаниях вела на голую главную — привязка не срабатывала.
+    link_uid = uid if (uid and sig and _verify_pay_sig(uid, sig)) else ""
     return templates.TemplateResponse("index.html", {
         **_page_context(request),
         "downloads": APP_DOWNLOADS,
         "trial_hours": TRIAL_HOURS,
         "active_token": active_token,
+        "link_uid": link_uid,
+        "link_sig": sig if link_uid else "",
     })
 
 
@@ -1042,16 +1050,13 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 
 def _verify_pay_sig(uid: str, sig: str) -> bool:
-    import hmac, hashlib
-    secret = os.environ.get("PAY_LINK_SECRET", os.environ.get("BOT_TOKEN", "")[:32])
-    expected = hmac.new(secret.encode(), str(uid).encode(), hashlib.sha256).hexdigest()[:16]
-    return hmac.compare_digest(sig, expected)
+    # Реализация переехала в sub_tokens (её же использует vpn-campaign.py).
+    # Обёртки оставлены, чтобы не трогать десяток вызовов по файлу.
+    return sub_tokens.verify_pay_sig(uid, sig)
 
 
 def _make_pay_sig(uid: str) -> str:
-    import hmac, hashlib
-    secret = os.environ.get("PAY_LINK_SECRET", os.environ.get("BOT_TOKEN", "")[:32])
-    return hmac.new(secret.encode(), str(uid).encode(), hashlib.sha256).hexdigest()[:16]
+    return sub_tokens.make_pay_sig(uid)
 
 
 # Telegram username: 5–32 символа, латиница/цифры/_, не начинается с цифры.
