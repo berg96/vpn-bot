@@ -1450,14 +1450,15 @@ async def _activate_with_retry(
                 # Уже кто-то активировал параллельно (startup catch-up + webhook).
                 logger.info(f"activate inv_id={inv_id}: already activated, skipping notify")
                 return
-            await _send_activation_notice(tg_id, mz_username, rub_str, expire_str, plan_key)
-            # Реф-бонус: первая оплата приглашённого → дни обоим + уведомление.
-            # После активации (add_bonus_days требует существующего юзера панели),
-            # и только на реальной активации (mark_robokassa_activated=True выше).
+            # Реф-бонус ДО уведомления: mark_robokassa_activated — одноразовый CAS,
+            # и если _send_activation_notice бросит (сбой TG API) → ретрай уйдёт в
+            # ранний return выше, а бонус потеряется навсегда. У credit свой
+            # try/except — выдачу подписки/уведомление он не роняет.
             try:
                 await referral.credit_first_payment(tg_id)
             except Exception as e:
                 logger.warning(f"referral credit (rub) {tg_id} failed: {e}")
+            await _send_activation_notice(tg_id, mz_username, rub_str, expire_str, plan_key)
             logger.info(f"activate inv_id={inv_id} ok on attempt {attempt}")
             return
         except Exception as e:

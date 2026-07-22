@@ -1226,17 +1226,26 @@ def get_referrer(tg_id: int) -> int | None:
     return int(row[0]) if row and row[0] is not None else None
 
 
-def is_referral_credited(tg_id: int) -> bool:
+def claim_referral_credit(tg_id: int) -> bool:
+    """Атомарно застолбить начисление реф-бонуса — защита от гонки (дубль
+    successful_payment; bot+landing на общей SQLite). Тот же CAS-паттерн, что
+    `mark_robokassa_activated`: `UPDATE ... WHERE credited=0` → rowcount>0 ровно у
+    одного вызова, остальные получают False. Столбим ДО начисления, не после."""
     with _conn() as c:
-        row = c.execute(
-            "SELECT COALESCE(referral_credited,0) FROM users WHERE tg_id=?", (tg_id,)
-        ).fetchone()
-    return bool(row and row[0])
+        cur = c.execute(
+            "UPDATE users SET referral_credited=1 "
+            "WHERE tg_id=? AND COALESCE(referral_credited,0)=0",
+            (tg_id,),
+        )
+        return cur.rowcount > 0
 
 
-def mark_referral_credited(tg_id: int) -> None:
+def release_referral_credit(tg_id: int) -> None:
+    """Откат заклейма, если начисление не прошло (панель упала) — чтобы бонус
+    добрался при СЛЕДУЮЩЕЙ оплате (credit_first_payment гейтит по наличию оплаты,
+    не по «строго первой»)."""
     with _conn() as c:
-        c.execute("UPDATE users SET referral_credited=1 WHERE tg_id=?", (tg_id,))
+        c.execute("UPDATE users SET referral_credited=0 WHERE tg_id=?", (tg_id,))
 
 
 def event_counts(names: list[str], days: int) -> dict[str, int]:

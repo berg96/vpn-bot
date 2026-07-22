@@ -43,30 +43,35 @@ async def _notify(tg_id: int, text: str) -> None:
 
 
 async def credit_first_payment(tg_id: int) -> dict | None:
-    """Начислить реф-бонус, если это первая оплата приглашённого и ещё не начисляли.
+    """Начислить реф-бонус приглашённому и пригласившему, если ещё не начисляли.
 
     Зовётся ПОСЛЕ активации подписки (add_bonus_days требует существующего юзера
-    панели с активным сроком). Идемпотентно: `referral_credited` не даёт задвоить.
-    → {"inviter", "invited", "days"} при начислении, иначе None.
+    панели с активным сроком) и после record_payment. Награда — при оплате
+    приглашённого; ретраится при доплате, если панель падала на первой (гейт по
+    наличию оплаты, а не «строго первая»). → {"inviter","invited","days"} или None.
     """
-    if db.is_referral_credited(tg_id):
-        return None
     referrer = db.get_referrer(tg_id)
     if not referrer:
         return None
-    # Строго ПЕРВАЯ оплата: зовут сразу после record_payment, значит count==1.
-    if len(db.get_user_payments(tg_id)) != 1:
+    # Анти-фарм: начисляем только когда оплата реально была (зовут после record_payment).
+    if not db.get_user_payments(tg_id):
+        return None
+    # Атомарный claim ДО начисления — ровно один вызов проходит под гонкой
+    # (дубль successful_payment; bot+landing на общей SQLite). При провале grant'а
+    # заклейм откатываем, чтобы бонус добрался при следующей оплате.
+    if not db.claim_referral_credit(tg_id):
         return None
 
     invited_mz = db.get_mz_username(tg_id)
     inviter_mz = db.get_mz_username(referrer)
 
     # Приглашённому — дни сверх только что оплаченной подписки. Это ядро награды:
-    # не вышло начислить — не помечаем credited (пусть попробуется при доплате).
+    # не вышло начислить — откатываем claim (пусть попробуется при доплате).
     try:
         await panel.add_bonus_days(invited_mz, INVITED_DAYS)
     except Exception as e:
         logger.error(f"referral: invited grant {tg_id} ({invited_mz}) failed: {e}")
+        db.release_referral_credit(tg_id)
         return None
 
     # Пригласившему — best-effort: у него может не быть активной подписки/аккаунта
@@ -79,7 +84,6 @@ async def credit_first_payment(tg_id: int) -> dict | None:
         except Exception as e:
             logger.warning(f"referral: inviter grant {referrer} ({inviter_mz}) failed: {e}")
 
-    db.mark_referral_credited(tg_id)
     # Продлили сроки → сбрасываем reminder-события, чтобы напоминания сработали заново.
     db.delete_reminder_events(tg_id)
     if inviter_ok:
