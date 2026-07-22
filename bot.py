@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from typing import Any, Awaitable, Callable
+from urllib.parse import quote
 import aiohttp
 from datetime import datetime, timezone
 
@@ -19,6 +20,7 @@ from aiogram.exceptions import (
 import config
 import db
 import panel
+import referral
 import tinkoff
 
 
@@ -167,6 +169,7 @@ def start_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📖 Установка", callback_data="apps_menu")],
         [InlineKeyboardButton(text="👤 Профиль", callback_data="profile")],
+        [InlineKeyboardButton(text="🎁 Пригласить друга", callback_data="ref_info")],
         [InlineKeyboardButton(text="💬 Поддержка", url=config.SUPPORT_LINK)],
     ])
 
@@ -242,13 +245,19 @@ def apps_keyboard() -> InlineKeyboardMarkup:
 
 # ── /start ───────────────────────────────────────────────────────────────────
 
-async def _do_start(tg_id: int, username: str | None, first_name: str | None, answer_fn) -> None:
+async def _do_start(tg_id: int, username: str | None, first_name: str | None, answer_fn,
+                    referrer: int | None = None) -> None:
     """Общая логика старта — используется и в /start и в кнопке 'Начать'."""
     is_new = db.record_user(tg_id, username)
     if is_new:
         db.log_event(tg_id, "user_registered", {"username": username})
     db.touch_user(tg_id)
     db.log_event(tg_id, "start")
+
+    # Реф-привязка: правила (не сам себя, не оплативший, окно от регистрации, ещё
+    # не привязан) держит db.set_referrer. Награда — при первой оплате приглашённого.
+    if referrer is not None and db.set_referrer(tg_id, referrer):
+        db.log_event(tg_id, "referred", {"by": referrer})
 
     if not db.is_trial_used(tg_id):
         await answer_fn(
@@ -304,6 +313,7 @@ async def cmd_start(msg: Message, command: CommandObject):
 
     Поддерживаемые payload'ы:
       lp_<token> → landing-конверсия (+7 дней нового / +1 день существующему)
+      ref_<tg>   → пришёл по реф-ссылке: привязываем пригласившего
       profile    → сразу открыть /profile (deep-link из webhook'а RUB-оплаты)
       (пусто)    → обычное приветствие + активация триала, если первый раз
     """
@@ -311,11 +321,12 @@ async def cmd_start(msg: Message, command: CommandObject):
     # логах не нужны (попадут в .session/, риск утечки в push).
     args_kind = "none"
     if command.args:
-        args_kind = command.args[:3] if command.args.startswith(("lp_", "pro")) else "other"
+        args_kind = command.args[:3] if command.args.startswith(("lp_", "pro", "ref")) else "other"
     logger.info(
         "cmd_start: tg_id=%s msg=%s args_kind=%s",
         msg.from_user.id if msg.from_user else None, msg.message_id, args_kind,
     )
+    referrer = None
     if command.args:
         if command.args.startswith("lp_"):
             await _handle_landing_deeplink(msg, command.args[3:])
@@ -323,7 +334,11 @@ async def cmd_start(msg: Message, command: CommandObject):
         if command.args == "profile":
             await cmd_profile(msg)
             return
-    await _do_start(msg.from_user.id, msg.from_user.username, msg.from_user.first_name, msg.answer)
+        if command.args.startswith("ref_"):
+            referrer = command.args[4:].strip()
+            referrer = int(referrer) if referrer.isdigit() else None
+    await _do_start(msg.from_user.id, msg.from_user.username, msg.from_user.first_name,
+                    msg.answer, referrer=referrer)
 
 
 async def _handle_landing_deeplink(msg: Message, token: str) -> None:
@@ -658,6 +673,7 @@ async def cmd_profile(event: Message | CallbackQuery):
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔄 Продлить", callback_data="back_to_plans")],
             [InlineKeyboardButton(text="📲 Открыть в приложении", url=_install_url(tg_id))],
+            [InlineKeyboardButton(text="🎁 Пригласить друга", callback_data="ref_info")],
             [InlineKeyboardButton(text="📖 Установка", callback_data="apps_menu")],
             [InlineKeyboardButton(text="💬 Поддержка", url=config.SUPPORT_LINK)],
         ])
@@ -827,6 +843,12 @@ async def successful_payment(msg: Message):
         mz_sub_url = user_data.get("subscription_url", "")
         if mz_sub_url:
             db.set_sub_url(tg_id, mz_sub_url)
+        # Реф-бонус: если это первая оплата приглашённого — начислит дни обоим и
+        # уведомит. Свои гейты внутри; не роняем выдачу подписки.
+        try:
+            await referral.credit_first_payment(tg_id)
+        except Exception as e:
+            logger.warning(f"referral credit (stars) {tg_id} failed: {e}")
         sub_url = _stable_sub_url(tg_id)
         expire_ts = user_data.get("expire")
         if expire_ts:
@@ -1009,6 +1031,57 @@ async def cb_do_start(call: CallbackQuery):
     except Exception:
         pass
     await _do_start(call.from_user.id, call.from_user.username, call.from_user.first_name, call.message.answer)
+    await call.answer()
+
+
+# ── Рефералка: «Пригласить друга» ────────────────────────────────────────────
+
+def _referral_view(tg_id: int) -> tuple[str, InlineKeyboardMarkup]:
+    """Текст + клавиатура реф-экрана. Без статистики (по решению Артёма) — только
+    ссылка и как это работает."""
+    link = f"https://t.me/{config.BOT_USERNAME}?start=ref_{tg_id}"
+    share_text = (
+        "Пользуюсь RadarShield — VPN, который не отваливается. "
+        "Заходи по моей ссылке, оформи подписку — оба получим бонусные дни:"
+    )
+    share_url = (
+        "https://t.me/share/url"
+        f"?url={quote(link, safe='')}&text={quote(share_text, safe='')}"
+    )
+    text = (
+        "🎁 <b>Приглашай друзей — получай бонусные дни</b>\n\n"
+        f"Когда друг перейдёт по твоей ссылке и оформит первую подписку, "
+        f"<b>вы оба получите +{referral.INVITER_DAYS} дней</b> бесплатно.\n\n"
+        "Твоя ссылка:\n"
+        f"<code>{link}</code>"
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📤 Поделиться ссылкой", url=share_url)],
+        [InlineKeyboardButton(text="👤 Профиль", callback_data="profile")],
+    ])
+    return text, kb
+
+
+@dp.message(Command("ref"))
+async def cmd_ref(msg: Message):
+    if not db.user_exists(msg.from_user.id):
+        await _do_start(msg.from_user.id, msg.from_user.username,
+                        msg.from_user.first_name, msg.answer)
+        return
+    text, kb = _referral_view(msg.from_user.id)
+    await msg.answer(text, parse_mode=ParseMode.HTML, reply_markup=kb,
+                     disable_web_page_preview=True)
+
+
+@dp.callback_query(F.data == "ref_info")
+async def cb_ref_info(call: CallbackQuery):
+    text, kb = _referral_view(call.from_user.id)
+    try:
+        await call.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=kb,
+                                     disable_web_page_preview=True)
+    except Exception:
+        await call.message.answer(text, parse_mode=ParseMode.HTML, reply_markup=kb,
+                                  disable_web_page_preview=True)
     await call.answer()
 
 

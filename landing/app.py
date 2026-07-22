@@ -20,6 +20,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 import db
 import panel
+import referral
 import robokassa
 import sub_tokens
 
@@ -1450,6 +1451,13 @@ async def _activate_with_retry(
                 logger.info(f"activate inv_id={inv_id}: already activated, skipping notify")
                 return
             await _send_activation_notice(tg_id, mz_username, rub_str, expire_str, plan_key)
+            # Реф-бонус: первая оплата приглашённого → дни обоим + уведомление.
+            # После активации (add_bonus_days требует существующего юзера панели),
+            # и только на реальной активации (mark_robokassa_activated=True выше).
+            try:
+                await referral.credit_first_payment(tg_id)
+            except Exception as e:
+                logger.warning(f"referral credit (rub) {tg_id} failed: {e}")
             logger.info(f"activate inv_id={inv_id} ok on attempt {attempt}")
             return
         except Exception as e:

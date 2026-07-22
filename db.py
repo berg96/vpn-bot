@@ -241,6 +241,12 @@ def init_db():
         # по нику их не найти, а «просто tg_id» support-оператору ничего не говорит.
         if "first_name" not in ucols:
             c.execute("ALTER TABLE users ADD COLUMN first_name TEXT")
+        # Рефералка: кто привёл юзера (tg_id пригласившего) и начислен ли бонус
+        # (награда — при ПЕРВОЙ оплате приглашённого, один раз, анти-фарм).
+        if "referred_by" not in ucols:
+            c.execute("ALTER TABLE users ADD COLUMN referred_by INTEGER")
+        if "referral_credited" not in ucols:
+            c.execute("ALTER TABLE users ADD COLUMN referral_credited INTEGER NOT NULL DEFAULT 0")
 
 
 def record_user(tg_id: int, username: str | None) -> bool:
@@ -1186,6 +1192,51 @@ def payment_counts_by_user() -> dict[int, int]:
     with _conn() as c:
         rows = c.execute("SELECT tg_id, count(*) FROM payments GROUP BY tg_id").fetchall()
     return {int(r[0]): int(r[1]) for r in rows}
+
+
+# ── Рефералка ────────────────────────────────────────────────────────────────
+
+def set_referrer(tg_id: int, referrer_tg_id: int, within_days: int = 7) -> bool:
+    """Привязать пригласившего. → True если привязали.
+
+    Условия (анти-фарм, но не жёстко «только первый /start»): не сам себя;
+    пригласивший есть в базе; юзер ещё НЕ привязан; юзер ещё НЕ оплачивал;
+    прошло не больше `within_days` с его регистрации (перейти по ссылке можно
+    несколько дней, но до оплаты). Награда всё равно только при оплате, так что
+    свободная атрибуция farm-риска почти не несёт."""
+    if referrer_tg_id == tg_id:
+        return False
+    with _conn() as c:
+        if not c.execute("SELECT 1 FROM users WHERE tg_id=?", (referrer_tg_id,)).fetchone():
+            return False
+        if c.execute("SELECT 1 FROM payments WHERE tg_id=? LIMIT 1", (tg_id,)).fetchone():
+            return False  # уже клиент — задним числом не присваиваем
+        cur = c.execute(
+            "UPDATE users SET referred_by=? "
+            "WHERE tg_id=? AND referred_by IS NULL "
+            "AND first_seen >= ?",
+            (referrer_tg_id, tg_id, _iso_ago(within_days)),
+        )
+        return cur.rowcount > 0
+
+
+def get_referrer(tg_id: int) -> int | None:
+    with _conn() as c:
+        row = c.execute("SELECT referred_by FROM users WHERE tg_id=?", (tg_id,)).fetchone()
+    return int(row[0]) if row and row[0] is not None else None
+
+
+def is_referral_credited(tg_id: int) -> bool:
+    with _conn() as c:
+        row = c.execute(
+            "SELECT COALESCE(referral_credited,0) FROM users WHERE tg_id=?", (tg_id,)
+        ).fetchone()
+    return bool(row and row[0])
+
+
+def mark_referral_credited(tg_id: int) -> None:
+    with _conn() as c:
+        c.execute("UPDATE users SET referral_credited=1 WHERE tg_id=?", (tg_id,))
 
 
 def event_counts(names: list[str], days: int) -> dict[str, int]:
