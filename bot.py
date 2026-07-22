@@ -459,6 +459,12 @@ async def _handle_landing_deeplink(msg: Message, token: str) -> None:
         )
         db.set_mz_username(tg_id, lead["mz_username"])
         db.mark_trial_used(tg_id)
+        # Лендинг-триал создавался анонимно (lp_*, без telegramId) — теперь tg_id
+        # известен, проставим его в панели для поиска. Некритично → не роняем claim.
+        try:
+            await panel.set_telegram_id(lead["mz_username"], tg_id)
+        except Exception as e:
+            logger.warning(f"set_telegram_id on claim {tg_id} failed: {e}")
         db.delete_reminder_events(tg_id)  # свежая подписка → reset напоминаний
         db.log_event(tg_id, "trial_activated", {"days": 7, "data_limit_gb": 5.0, "source": "landing"})
 

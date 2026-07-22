@@ -119,19 +119,23 @@ class RemnawaveBackend(PanelBackend):
             return None
 
     async def _create(
-        self, username: str, expire_ts: int, data_limit_bytes: int
+        self, username: str, expire_ts: int, data_limit_bytes: int,
+        telegram_id: int | None = None,
     ) -> dict:
         s = await self._sess()
-        resp = await s.post(
-            f"{self.url}/api/users",
-            json={
-                "username": username,
-                "expireAt": _epoch_to_iso(expire_ts) if expire_ts else _FOREVER,
-                "trafficLimitBytes": data_limit_bytes,
-                "trafficLimitStrategy": "NO_RESET",
-                "activeInternalSquads": [self.squad],
-            },
-        )
+        payload = {
+            "username": username,
+            "expireAt": _epoch_to_iso(expire_ts) if expire_ts else _FOREVER,
+            "trafficLimitBytes": data_limit_bytes,
+            "trafficLimitStrategy": "NO_RESET",
+            "activeInternalSquads": [self.squad],
+        }
+        # Нативный telegramId → поиск юзера В САМОЙ панели по стабильному tg_id
+        # (username — снимок ника с регистрации, устаревает; tg_id не меняется).
+        # Кладём только когда он есть: у анонимных лендинг-триалов (lp_*) tg_id нет.
+        if telegram_id is not None:
+            payload["telegramId"] = telegram_id
+        resp = await s.post(f"{self.url}/api/users", json=payload)
         resp.raise_for_status()
         return self._shape((await resp.json())["response"])
 
@@ -152,15 +156,16 @@ class RemnawaveBackend(PanelBackend):
             current_expire = _iso_to_epoch(raw.get("expireAt"))
             if current_expire > now_ts:
                 expire_ts = current_expire + days * 86400
-            return await self._patch(
-                raw["uuid"],
-                {
-                    "expireAt": _epoch_to_iso(expire_ts),
-                    "status": "ACTIVE",
-                    "trafficLimitBytes": 0,
-                },
-            )
-        return await self._create(username, expire_ts, 0)
+            fields = {
+                "expireAt": _epoch_to_iso(expire_ts),
+                "status": "ACTIVE",
+                "trafficLimitBytes": 0,
+            }
+            # Бэкфилл на продлении: у кого telegramId ещё не проставлен — проставим.
+            if not raw.get("telegramId"):
+                fields["telegramId"] = tg_id
+            return await self._patch(raw["uuid"], fields)
+        return await self._create(username, expire_ts, 0, telegram_id=tg_id)
 
     async def create_trial_user(
         self,
@@ -171,7 +176,9 @@ class RemnawaveBackend(PanelBackend):
     ) -> dict:
         username = mz_username or f"tg_{tg_id}"
         expire_ts = int(datetime.now(timezone.utc).timestamp()) + days * 86400
-        return await self._create(username, expire_ts, int(data_limit_gb * 1024**3))
+        return await self._create(
+            username, expire_ts, int(data_limit_gb * 1024**3), telegram_id=tg_id
+        )
 
     async def create_landing_trial(
         self, mz_username: str, hours: int = 3, data_limit_mb: int = 500
@@ -214,6 +221,18 @@ class RemnawaveBackend(PanelBackend):
         return await self._patch(
             raw["uuid"], {"status": _STATUS_TO_RW.get(status, status.upper())}
         )
+
+    async def set_telegram_id(self, mz_username: str, tg_id: int) -> bool:
+        """Проставить нативный telegramId юзеру панели (поиск по стабильному tg_id).
+        → True если проставили/подтвердили, False если юзера в панели нет.
+        Идемпотентно: если уже стоит верный — не патчим."""
+        raw = await self._get_raw(mz_username)
+        if not raw:
+            return False
+        if raw.get("telegramId") == tg_id:
+            return True
+        await self._patch(raw["uuid"], {"telegramId": tg_id})
+        return True
 
     async def revoke_sub(self, mz_username: str) -> dict:
         raw = await self._get_raw(mz_username)
