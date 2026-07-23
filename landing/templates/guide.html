@@ -222,7 +222,6 @@
       <div class="guide-step">
         <div class="guide-step-num">1</div>
         <div class="guide-step-body">
-          <img class="guide-shot" src="/static/guide/win-1.jpg" alt="RadarShield win — шаг 1" loading="lazy" onerror="this.remove()">
           <h3>Скачай и установи клиент</h3>
           <p>На <b>Windows</b> — FLClash: запусти <code>.exe</code>. На <b>Mac</b> — Karing из App Store: то же приложение, что и на iPhone, ставится в один клик.</p>
           <details style="margin-top:10px">
@@ -240,8 +239,8 @@
       <div class="guide-step">
         <div class="guide-step-num">2</div>
         <div class="guide-step-body">
-          <img class="guide-shot" src="/static/guide/win-2.jpg" alt="RadarShield win — шаг 2" loading="lazy" onerror="this.remove()">
           <h3>Добавь профиль по URL</h3>
+          <img class="guide-shot-wide" src="/static/guide/win-2.jpg" alt="FLClash на Windows: экран «Профили», кнопка «Добавить профиль»" loading="lazy" onerror="this.remove()">
           <ol>
             <li>Открой клиент → нажми <b>+</b> → <b>Import from URL</b> (в Karing — <b>Импорт из буфера обмена</b>)</li>
             <li>Вставь свою ссылку-подписку RadarShield</li>
@@ -256,8 +255,8 @@
       <div class="guide-step">
         <div class="guide-step-num">3</div>
         <div class="guide-step-body">
-          <img class="guide-shot" src="/static/guide/win-3.jpg" alt="RadarShield win — шаг 3" loading="lazy" onerror="this.remove()">
           <h3>Подключиться</h3>
+          <img class="guide-shot-wide" src="/static/guide/win-3.jpg" alt="FLClash на Windows: кнопка подключения и режим «Правило»" loading="lazy" onerror="this.remove()">
           <p>На главном экране нажми кнопку подключения. Статус сменится на <b>Connected</b>.</p>
           <p>Режим <b>Правило</b> выбирается автоматически — он оптимален для большинства задач.</p>
         </div>
@@ -523,6 +522,16 @@
 }
 
 .guide-step-body::after { content:""; display:block; clear:both; }
+.guide-shot-wide {
+  display: block;
+  float: none;
+  width: 100%;
+  max-width: 520px;
+  margin: 14px 0 4px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  box-shadow: 0 10px 30px rgba(0,0,0,.20);
+}
 .guide-shot {
   float: right;
   width: 172px;
