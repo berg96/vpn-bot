@@ -543,6 +543,26 @@ async def cb_notify_less(call: CallbackQuery):
         pass  # сообщение могло быть удалено/изменено — опт-аут уже записан
 
 
+@dp.callback_query(F.data.startswith("shok:"))
+async def cb_sharing_ok(call: CallbackQuery):
+    """Кнопка «это нормальный юзер» под алертом о шеринге (только админу).
+
+    Ничего не блокирует — наоборот, добавляет юзера в вайтлист, чтобы детектор
+    его больше не подсвечивал. Сигнал по одновременным локациям шумный (офис +
+    дом + телефон), кнопка нужна, чтобы Артём отсеивал ложные разы.
+    """
+    if call.from_user.id != config.ADMIN_TG_ID:
+        await call.answer("Не для тебя", show_alert=False)
+        return
+    username = call.data.split(":", 1)[1]
+    db.sharing_whitelist_add(username, call.from_user.id)
+    await call.answer(f"{username} помечен нормальным — больше не алертим", show_alert=True)
+    try:
+        await call.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+
+
 @dp.callback_query(F.data.startswith("lp_merge:"))
 async def cb_lp_merge(call: CallbackQuery):
     token = call.data.split(":", 1)[1]
