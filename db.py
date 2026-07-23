@@ -215,6 +215,14 @@ def init_db():
         c.execute(
             "CREATE INDEX IF NOT EXISTS ix_online_snap_user ON online_snapshots(user_id, ts)"
         )
+        # n_prefixes16 — одновременные /16 (мобильный оператор раздаёт один
+        # телефон по многим /24 внутри своей /16; по /24 он ложно выглядел как
+        # несколько мест). Считается с 2026-07-23; у старых строк NULL —
+        # детектор берёт только не-NULL, поэтому переезжает на /16 за пару дней.
+        try:
+            c.execute("ALTER TABLE online_snapshots ADD COLUMN n_prefixes16 INTEGER")
+        except Exception:
+            pass
 
         # Лог рассылок. `kind`: transactional (истечение, оплата, инцидент — их ждут,
         # под месячный кап не попадают) | marketing (реферал, win-back, апдейт —
@@ -980,13 +988,15 @@ def log_online_snapshot(
     n_prefixes: int,
     n_asns: int,
     nodes: str | None,
+    n_prefixes16: int | None = None,
 ) -> None:
     """Одновременность на момент тика — по ней и выставляются пороги."""
     with _conn() as c:
         c.execute(
             "INSERT INTO online_snapshots "
-            "(ts, user_id, username, n_ips, n_prefixes, n_asns, nodes) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (_now_iso(), user_id, username, n_ips, n_prefixes, n_asns, nodes),
+            "(ts, user_id, username, n_ips, n_prefixes, n_prefixes16, n_asns, nodes) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (_now_iso(), user_id, username, n_ips, n_prefixes, n_prefixes16, n_asns, nodes),
         )
 
 
@@ -1036,14 +1046,52 @@ def online_ip_stats(days: int = 7) -> list[dict]:
     ]
 
 
-#: Устройство считаем по /24, а не по IP: телефон в мобильной сети меняет адрес
-#: внутри подсети оператора и иначе выглядел бы как несколько устройств.
-#: Порог алерта — из калибровки 12–23.07 (14 юзеров, 29k снимков): пик
-#: одновременных /24 у реальных людей = 3, у большинства 1–2. 5 — с запасом,
-#: чтобы не ловить сети с CGNAT и переключения Wi-Fi↔LTE.
+#: «Место» считаем по /16, а не /24: мобильный оператор гоняет один телефон по
+#: многим /24 внутри своей /16, и по /24 он ложно выглядел как несколько мест
+#: (совет remnawave-limiter для мобильной аудитории — ровно /16 или ASN).
+#: Шеринг — это несколько мест ОДНОВРЕМЕННО и УСТОЙЧИВО: разовый всплеск (сел в
+#: поезд, переключилась сеть) не считаем, нужна доля времени. Калибровка
+#: 12–23.07 (14 юзеров, 29k снимков): у всех 96–100% времени одно место.
 ONLINE_STALE_MIN = 8          # снимки старше — уже не «сейчас» (крон ходит раз в 2 мин)
-SHARING_ALERT_PREFIXES = 5
-SHARING_ALERT_ASNS = 4
+SHARING_MIN_LOCATIONS = 3     # сколько одновременных /16 считаем подозрением
+SHARING_TIME_SHARE = 0.20     # ...и хотя бы в такой доле снимков за окно
+SHARING_ALERT_ASNS = 4        # запасной сигнал: столько операторов СРАЗУ
+
+
+def sharing_profile(days: int = 7,
+                    min_loc: int = SHARING_MIN_LOCATIONS) -> list[dict]:
+    """Профиль устойчивого мультилокейшна по каждому юзеру за окно.
+
+    Ключевая метрика — `share`: доля снимков, где юзер был в ≥ min_loc местах
+    (/16) ОДНОВРЕМЕННО. Разовый пик так не всплывёт — нужна устойчивость.
+    Берём только строки с посчитанным /16 (n_prefixes16): старые /24-снимки
+    сюда не попадают, поэтому метрика «созревает» за пару дней после 23.07.
+    """
+    since = _iso_ago(days)
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT user_id, COALESCE(MAX(username), user_id) AS username, "
+            "       COUNT(*) AS snaps, "
+            "       SUM(CASE WHEN n_prefixes16 >= ? THEN 1 ELSE 0 END) AS multi, "
+            "       MAX(n_prefixes16) AS peak_loc, MAX(n_asns) AS peak_asn "
+            "FROM online_snapshots "
+            "WHERE ts >= ? AND n_prefixes16 IS NOT NULL "
+            "GROUP BY user_id",
+            (min_loc, since),
+        ).fetchall()
+    out = []
+    for uid, username, snaps, multi, peak_loc, peak_asn in rows:
+        snaps = int(snaps) or 1
+        out.append({
+            "user_id": uid,
+            "username": username,
+            "snaps": int(snaps),
+            "multi_snaps": int(multi or 0),
+            "share": (int(multi or 0)) / snaps,
+            "peak_locations": int(peak_loc or 0),
+            "peak_asns": int(peak_asn or 0),
+        })
+    return sorted(out, key=lambda x: -x["share"])
 
 
 def online_now_all(stale_min: int = ONLINE_STALE_MIN) -> list[dict]:
