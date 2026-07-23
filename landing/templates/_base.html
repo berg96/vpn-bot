@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <meta name="robots" content="{{ robots|default('index, follow') }}">
 {% block meta %}
-<meta name="description" content="{{ description|default('RadarShield — VPN, который продолжает работать, когда обычные блокируют: два протокола и 12 серверов в 4 странах. Российские сайты и банки идут напрямую. 3 часа бесплатно без регистрации.') }}">
+<meta name="description" content="{{ description|default('RadarShield — VPN для России, который продолжает работать, когда другие блокируют: два протокола и 12 серверов в 4 странах. Российские сайты и банки идут напрямую, скорость не падает. 3 часа бесплатно, без регистрации и карты.') }}">
 {% endblock %}
 <title>{% block title %}RadarShield — умная маршрутизация интернет-трафика{% endblock %}</title>
 <link rel="canonical" href="https://radarshield.mooo.com{{ request.url.path }}">
@@ -17,8 +17,8 @@
 {% block og %}
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://radarshield.mooo.com/">
-<meta property="og:title" content="RadarShield — умная маршрутизация интернет-трафика">
-<meta property="og:description" content="VPN, который продолжает работать, когда обычные блокируют: два протокола и 12 серверов в 4 странах. Российские сайты и банки — напрямую. 3 часа бесплатно без регистрации, 7 дней и 5 ГБ через Telegram.">
+<meta property="og:title" content="RadarShield — VPN для России, который не перестаёт работать">
+<meta property="og:description" content="VPN для России, который продолжает работать, когда другие блокируют: два протокола и 12 серверов в 4 странах. Российские сайты и банки — напрямую. 3 часа бесплатно без регистрации, 7 дней и 5 ГБ через Telegram.">
 <meta property="og:image" content="https://radarshield.mooo.com/static/og-image.svg">
 <meta property="og:locale" content="ru_RU">
 {% endblock %}
@@ -123,7 +123,7 @@ function resetTurnstile() {
           RadarShield
         </a>
         <p style="color:var(--ink-dim);font-size:14px;max-width:320px">
-          VPN, который продолжает работать, когда обычные блокируют. Российские сайты — напрямую.
+          Умная маршрутизация трафика: соединение работает, когда обычные каналы блокируют. Российские сайты — напрямую.
         </p>
         <div class="pay">
           <span class="pay-chip" aria-label="Visa">

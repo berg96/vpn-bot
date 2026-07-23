@@ -1,5 +1,5 @@
 {% extends "_base.html" %}
-{% block title %}RadarShield — умная маршрутизация интернет-трафика{% endblock %}
+{% block title %}RadarShield — VPN для России: работает, когда другие блокируют{% endblock %}
 
 {% block head_extra %}
 <script type="application/ld+json">
@@ -9,7 +9,7 @@
   "name": "RadarShield",
   "operatingSystem": "Android, iOS, Windows, macOS",
   "applicationCategory": "UtilitiesApplication",
-  "description": "VPN с двумя протоколами и 12 серверами в 4 странах: продолжает работать, когда обычные блокируют. Российские сайты и банки идут напрямую.",
+  "description": "VPN для России с двумя протоколами и 12 серверами в 4 странах: продолжает работать, когда другие блокируют. Российские сайты и банки идут напрямую, скорость на них не падает.",
   "offers": {"@type": "Offer", "price": "0", "priceCurrency": "RUB"}
 }
 </script>
@@ -36,9 +36,9 @@
       <div class="eyebrow"><span class="dot"></span> Сервис работает</div>
       <h1>Интернет открыт.<br/><span class="accent">Даже когда его закрывают.</span></h1>
       <p class="hero-sub">
-        Два протокола вместо одного: когда провайдер блокирует обычный VPN, соединение
+        Два протокола вместо одного: когда провайдер блокирует обычный канал, соединение
         уходит по резервному каналу и продолжает работать. Российские сайты и банки при
-        этом идут напрямую — так же быстро, как без VPN.
+        этом идут напрямую — так же быстро, как без сервиса.
       </p>
       <div class="hero-cta">
         <form id="trial-form" method="post" action="/trial" style="display:inline-flex">
@@ -204,7 +204,7 @@
       <div class="feat">
         <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
         <h3>Соединение неотличимо от обычного сайта</h3>
-        <p>Протокол VLESS Reality маскирует трафик под визит на большой популярный сайт. Для оборудования провайдера это выглядит как обычный HTTPS, а не как VPN, — поэтому его не распознают и не режут.</p>
+        <p>Протокол VLESS Reality маскирует трафик под визит на большой популярный сайт. Для оборудования провайдера это выглядит как обычный HTTPS, а не как шифрованный туннель, — поэтому его не распознают и не режут.</p>
       </div>
       <div class="feat">
         <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
@@ -213,7 +213,7 @@
       </div>
       <div class="feat">
         <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
-        <h3>Российские сайты — мимо VPN</h3>
+        <h3>Российские сайты — мимо туннеля</h3>
         <p>VK, Яндекс, Сбер, Ozon, Госуслуги открываются напрямую, с вашего домашнего адреса. Банки не видят вход из-за границы и не блокируют операции, а скорость на этих сайтах не падает.</p>
       </div>
       <div class="feat">

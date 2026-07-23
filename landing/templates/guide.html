@@ -1,6 +1,6 @@
 {% extends "_base.html" %}
-{% block title %}Как подключить RadarShield — пошаговая инструкция{% endblock %}
-{% block meta %}<meta name="description" content="Пошаговая инструкция подключения RadarShield на Android (FlClash) и iOS (Karing). Скачай клиент, добавь ссылку подписки и подключись за 2 минуты.">{% endblock %}
+{% block title %}Как настроить VPN на Android, iPhone, Windows и Mac — инструкция{% endblock %}
+{% block meta %}<meta name="description" content="Пошаговая настройка VPN: FLClash на Android и Windows, Karing на iPhone, iPad и Mac. Импорт ссылки подписки, режимы маршрутизации и что делать, если приложение не открывается на macOS.">{% endblock %}
 
 {% block body %}
 <section class="hero compact">
@@ -81,7 +81,7 @@
             <li>Перейди на вкладку <b>Панель управления</b></li>
             <li>Нажми кнопку подключения (значок ▶ вверху)</li>
             <li>Появится запрос <b>«FlClash пытается подключиться к сети VPN»</b> — нажми <b>OK</b></li>
-            <li>Статус сменится на зелёную галочку ✅ — VPN активен</li>
+            <li>Статус сменится на зелёную галочку ✅ — подключение активно</li>
           </ol>
         </div>
       </div>
@@ -101,9 +101,9 @@
       <table class="guide-table">
         <thead><tr><th>Режим</th><th>Описание</th></tr></thead>
         <tbody>
-          <tr><td><b>Правило</b></td><td>Рекомендуется — заблокированное через VPN, остальное напрямую</td></tr>
-          <tr><td><b>Глобальный</b></td><td>Весь трафик через VPN</td></tr>
-          <tr><td><b>Прямой</b></td><td>Весь трафик без VPN</td></tr>
+          <tr><td><b>Правило</b></td><td>Рекомендуется — заблокированное через сервис, остальное напрямую</td></tr>
+          <tr><td><b>Глобальный</b></td><td>Весь трафик через сервис</td></tr>
+          <tr><td><b>Прямой</b></td><td>Весь трафик напрямую</td></tr>
         </tbody>
       </table>
       <p style="color:var(--ink-dim);font-size:14px;margin-top:8px">По умолчанию выбрано <b>Правило</b> — оставь как есть.</p>
@@ -168,7 +168,7 @@
         <div class="guide-step-num">4</div>
         <div class="guide-step-body">
           <img class="guide-shot" src="/static/guide/ios-4.jpg" alt="RadarShield ios — шаг 4" loading="lazy" onerror="this.remove()">
-          <h3>Разрешить VPN</h3>
+          <h3>Разрешить подключение</h3>
           <p>iOS покажет диалог: <i>«Karing запрашивает разрешение на добавление конфигураций VPN»</i></p>
           <p>Нажми <b>Разрешить</b> (серая кнопка внизу).</p>
         </div>
@@ -198,8 +198,8 @@
       <table class="guide-table">
         <thead><tr><th>Режим</th><th>Описание</th></tr></thead>
         <tbody>
-          <tr><td><b>Правила</b></td><td>Рекомендуется — заблокированное через VPN, остальное напрямую</td></tr>
-          <tr><td><b>Глобально</b></td><td>Весь трафик через VPN</td></tr>
+          <tr><td><b>Правила</b></td><td>Рекомендуется — заблокированное через сервис, остальное напрямую</td></tr>
+          <tr><td><b>Глобально</b></td><td>Весь трафик через сервис</td></tr>
         </tbody>
       </table>
     </div>
@@ -228,7 +228,7 @@
           <details style="margin-top:10px">
             <summary style="cursor:pointer;color:var(--accent)">Нужен FLClash на Mac (запасной вариант)</summary>
             <p style="margin-top:8px">Скачай <a href="{{ downloads.flclash_macos_arm }}" target="_blank" rel="noopener nofollow">версию для M-серии</a> или <a href="{{ downloads.flclash_macos_x64 }}" target="_blank" rel="noopener nofollow">для Intel</a> — архитектуру видно в «Об этом Mac».</p>
-            <p>При первом запуске macOS напишет, что <b>«не может проверить приложение на наличие вредоносного ПО»</b>. Так система относится ко всем программам не из App Store, с самим VPN это не связано. Открыть можно двумя способами:</p>
+            <p>При первом запуске macOS напишет, что <b>«не может проверить приложение на наличие вредоносного ПО»</b>. Так система относится ко всем программам не из App Store, с самим сервисом это не связано. Открыть можно двумя способами:</p>
             <ul>
               <li><b>Системные настройки</b> → <b>Конфиденциальность и безопасность</b> → пролистай вниз → <b>«Всё равно открыть»</b>.</li>
               <li>Или в Терминале: <code>xattr -dr com.apple.quarantine /Applications/FlClash.app</code> — после этого приложение открывается обычным двойным кликом.</li>
@@ -265,20 +265,115 @@
     </div>
   </div>
 
+  <!-- FAQ — реальные вопросы поддержки. Тексты 1-в-1 повторены в FAQPage-разметке
+       ниже: расхождение видимого текста и разметки Google считает нарушением. -->
+  <div class="guide-faq" style="margin-top:56px">
+    <h2 style="margin-bottom:20px">Частые вопросы</h2>
+
+    <details class="faq-item">
+      <summary>На Mac пишет «не может проверить приложение» и не открывается — что делать?</summary>
+      <p>Так macOS относится ко всем программам не из App Store, с самим сервисом это не связано. Проще всего поставить Karing из Mac App Store — он подписан Apple и открывается сразу. Если нужен именно FLClash: Системные настройки → Конфиденциальность и безопасность → пролистать вниз → «Всё равно открыть». Либо выполнить в Терминале <code>xattr -dr com.apple.quarantine /Applications/FlClash.app</code>.</p>
+    </details>
+
+    <details class="faq-item">
+      <summary>Какое приложение выбрать под мою систему?</summary>
+      <p>На iPhone, iPad и Mac — Karing из App Store: одно приложение и одна ссылка подписки на все устройства. На Android и Windows — FLClash. Ссылка подписки везде одна и та же, её выдаёт бот командой /profile.</p>
+    </details>
+
+    <details class="faq-item">
+      <summary>Почему российские сайты открываются напрямую, а не через сервис?</summary>
+      <p>Так задумано: в профиль встроены правила маршрутизации. VK, Яндекс, Сбер, Ozon, Госуслуги и другие российские сайты идут с вашего домашнего адреса — скорость на них не падает, а банки не видят вход из-за границы и не блокируют операции. Остальной трафик идёт через наши серверы.</p>
+    </details>
+
+    <details class="faq-item">
+      <summary>Приложение просит разрешение на добавление конфигурации — это нормально?</summary>
+      <p>Да. Так iOS и Android спрашивают согласие на создание сетевого профиля — без него подключение не заработает. Достаточно нажать «Разрешить» один раз, при следующих запусках система больше не спросит.</p>
+    </details>
+
+    <details class="faq-item">
+      <summary>Соединение перестало устанавливаться — что попробовать?</summary>
+      <p>В списке подключений выберите соседний сервер: в профиле их 12, и они работают по двум разным протоколам, поэтому если один канал провайдер перекрыл, второй обычно проходит. Если не помогло — обновите профиль (в FLClash потянуть список профилей вниз, в Karing — «Обновить» в карточке профиля) и напишите в поддержку.</p>
+    </details>
+
+    <details class="faq-item">
+      <summary>Сколько стоит и можно ли попробовать бесплатно?</summary>
+      <p>Попробовать можно без карты и регистрации: 3 часа прямо с сайта, а через Telegram-бота — 7 дней и 5 ГБ. Дальше подписка: 250 ₽ за месяц, 599 ₽ за три месяца, 1890 ₽ за год.</p>
+    </details>
+  </div>
+
   <!-- Нижний блок — поддержка -->
   <div style="margin-top:56px;text-align:center;border-top:1px solid var(--border);padding-top:40px">
     <p style="color:var(--ink-dim);font-size:16px">Что-то не получается?</p>
     <div class="btn-row" style="justify-content:center;margin-top:16px">
       <a class="btn btn-primary" href="https://t.me/{{ support_username }}" target="_blank" rel="noopener">💬 Написать в поддержку</a>
-      <a class="btn btn-ghost" href="https://t.me/{{ bot_username }}" target="_blank" rel="noopener">🤖 Открыти бота</a>
+      <a class="btn btn-ghost" href="https://t.me/{{ bot_username }}" target="_blank" rel="noopener">🤖 Открыть бота</a>
     </div>
   </div>
 
 </div>
+
+<!-- FAQPage: вопросы и ответы дословно повторяют видимый блок «Частые вопросы».
+     Даёт расширенный сниппет в выдаче и ловит длиннохвостые запросы вида
+     «не может проверить приложение mac». -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "На Mac пишет «не может проверить приложение» и не открывается — что делать?",
+      "acceptedAnswer": {"@type": "Answer", "text": "Так macOS относится ко всем программам не из App Store, с самим сервисом это не связано. Проще всего поставить Karing из Mac App Store — он подписан Apple и открывается сразу. Если нужен именно FLClash: Системные настройки → Конфиденциальность и безопасность → пролистать вниз → «Всё равно открыть». Либо выполнить в Терминале: xattr -dr com.apple.quarantine /Applications/FlClash.app"}
+    },
+    {
+      "@type": "Question",
+      "name": "Какое приложение выбрать под мою систему?",
+      "acceptedAnswer": {"@type": "Answer", "text": "На iPhone, iPad и Mac — Karing из App Store: одно приложение и одна ссылка подписки на все устройства. На Android и Windows — FLClash. Ссылка подписки везде одна и та же, её выдаёт бот командой /profile."}
+    },
+    {
+      "@type": "Question",
+      "name": "Почему российские сайты открываются напрямую, а не через сервис?",
+      "acceptedAnswer": {"@type": "Answer", "text": "Так задумано: в профиль встроены правила маршрутизации. VK, Яндекс, Сбер, Ozon, Госуслуги и другие российские сайты идут с вашего домашнего адреса — скорость на них не падает, а банки не видят вход из-за границы и не блокируют операции. Остальной трафик идёт через наши серверы."}
+    },
+    {
+      "@type": "Question",
+      "name": "Приложение просит разрешение на добавление конфигурации — это нормально?",
+      "acceptedAnswer": {"@type": "Answer", "text": "Да. Так iOS и Android спрашивают согласие на создание сетевого профиля — без него подключение не заработает. Достаточно нажать «Разрешить» один раз, при следующих запусках система больше не спросит."}
+    },
+    {
+      "@type": "Question",
+      "name": "Соединение перестало устанавливаться — что попробовать?",
+      "acceptedAnswer": {"@type": "Answer", "text": "В списке подключений выберите соседний сервер: в профиле их 12, и они работают по двум разным протоколам, поэтому если один канал провайдер перекрыл, второй обычно проходит. Если не помогло — обновите профиль (в FLClash потянуть список профилей вниз, в Karing — «Обновить» в карточке профиля) и напишите в поддержку."}
+    },
+    {
+      "@type": "Question",
+      "name": "Сколько стоит и можно ли попробовать бесплатно?",
+      "acceptedAnswer": {"@type": "Answer", "text": "Попробовать можно без карты и регистрации: 3 часа прямо с сайта, а через Telegram-бота — 7 дней и 5 ГБ. Дальше подписка: 250 ₽ за месяц, 599 ₽ за три месяца, 1890 ₽ за год."}
+    }
+  ]
+}
+</script>
 {% endblock %}
 
 {% block head_extra %}
 <style>
+.guide-faq .faq-item {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 18px;
+  margin-bottom: 10px;
+}
+.guide-faq .faq-item summary {
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 16px;
+}
+.guide-faq .faq-item p {
+  margin-top: 10px;
+  color: var(--ink-dim);
+  font-size: 15px;
+  line-height: 1.7;
+}
 .guide-tabs {
   display: flex;
   gap: 8px;

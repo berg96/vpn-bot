@@ -1,6 +1,14 @@
 User-agent: *
 Allow: /
+
+# Приватные ссылки: подписки, персональные страницы, оплата, API.
+# В индексе им делать нечего — токены не должны утекать в выдачу.
+Disallow: /sub/
+Disallow: /open/
 Disallow: /s/
+Disallow: /i/
+Disallow: /api/
+Disallow: /pay
 Disallow: /trial
 
 Sitemap: https://radarshield.mooo.com/sitemap.xml
