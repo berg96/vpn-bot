@@ -477,6 +477,10 @@ def _iso_ago(days: int) -> str:
     return (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
 
 
+def _iso_ago_minutes(minutes: int) -> str:
+    return (datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat()
+
+
 def count_total_users() -> int:
     with _conn() as c:
         return c.execute("SELECT count(*) FROM users").fetchone()[0]
@@ -1005,13 +1009,17 @@ def online_ip_stats(days: int = 7) -> list[dict]:
             "FROM online_ips WHERE last_seen >= ? GROUP BY user_id",
             (since,),
         ).fetchall()
-        peaks = dict(
-            c.execute(
-                "SELECT user_id, MAX(n_prefixes) FROM online_snapshots "
-                "WHERE ts >= ? GROUP BY user_id",
-                (since,),
-            ).fetchall()
-        )
+        # Пики берём ОДНОВРЕМЕННЫЕ (из снимков), а не суммарные за окно: за неделю
+        # обычный человек проходит 4–6 операторов (LTE, дом, работа, роуминг) —
+        # по такой сумме «подозрительными» становятся почти все, проверено на
+        # живых данных 23.07. Шеринг виден только как несколько мест ОДНОВРЕМЕННО.
+        peak_rows = c.execute(
+            "SELECT user_id, MAX(n_prefixes), MAX(n_asns) FROM online_snapshots "
+            "WHERE ts >= ? GROUP BY user_id",
+            (since,),
+        ).fetchall()
+        peaks = {r[0]: int(r[1]) for r in peak_rows}
+        peak_asns = {r[0]: int(r[2]) for r in peak_rows}
     return [
         {
             "user_id": r[0],
@@ -1021,9 +1029,74 @@ def online_ip_stats(days: int = 7) -> list[dict]:
             "asns": int(r[4]),
             "countries": int(r[5]),
             "peak_prefixes": int(peaks.get(r[0], 0)),
+            "peak_asns": int(peak_asns.get(r[0], 0)),
             "last_seen": r[6],
         }
         for r in sorted(rows, key=lambda x: -x[3])
+    ]
+
+
+#: Устройство считаем по /24, а не по IP: телефон в мобильной сети меняет адрес
+#: внутри подсети оператора и иначе выглядел бы как несколько устройств.
+#: Порог алерта — из калибровки 12–23.07 (14 юзеров, 29k снимков): пик
+#: одновременных /24 у реальных людей = 3, у большинства 1–2. 5 — с запасом,
+#: чтобы не ловить сети с CGNAT и переключения Wi-Fi↔LTE.
+ONLINE_STALE_MIN = 8          # снимки старше — уже не «сейчас» (крон ходит раз в 2 мин)
+SHARING_ALERT_PREFIXES = 5
+SHARING_ALERT_ASNS = 4
+
+
+def online_now(username: str, stale_min: int = ONLINE_STALE_MIN) -> dict | None:
+    """Что у юзера онлайн прямо сейчас — по последнему свежему снимку.
+
+    Возвращает None, если снимков нет или они протухли: это значит «трафика не
+    видно», а не «ноль устройств» (юзер мог просто выключить подключение).
+    Считается из данных ядра, поэтому клиент подделать это не может — в отличие
+    от x-hwid, который за 12 дней прислал 1 запрос подписки из 377.
+    """
+    if not username:
+        return None
+    since = _iso_ago_minutes(stale_min)
+    with _conn() as c:
+        row = c.execute(
+            "SELECT ts, n_ips, n_prefixes, n_asns, nodes FROM online_snapshots "
+            "WHERE username = ? AND ts >= ? ORDER BY ts DESC LIMIT 1",
+            (username, since),
+        ).fetchone()
+    if not row:
+        return None
+    return {
+        "ts": row[0],
+        "ips": int(row[1]),
+        "devices": int(row[2]),      # /24 — наша единица «устройства»
+        "asns": int(row[3]),
+        "nodes": row[4],
+    }
+
+
+def online_now_all(stale_min: int = ONLINE_STALE_MIN) -> list[dict]:
+    """Последний свежий снимок по каждому юзеру — для алертов и админ-сводки."""
+    since = _iso_ago_minutes(stale_min)
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT s.user_id, s.username, s.ts, s.n_ips, s.n_prefixes, s.n_asns, s.nodes "
+            "FROM online_snapshots s "
+            "JOIN (SELECT user_id, MAX(ts) AS mx FROM online_snapshots "
+            "      WHERE ts >= ? GROUP BY user_id) m "
+            "  ON m.user_id = s.user_id AND m.mx = s.ts",
+            (since,),
+        ).fetchall()
+    return [
+        {
+            "user_id": r[0],
+            "username": r[1],
+            "ts": r[2],
+            "ips": int(r[3]),
+            "devices": int(r[4]),
+            "asns": int(r[5]),
+            "nodes": r[6],
+        }
+        for r in sorted(rows, key=lambda x: -x[4])
     ]
 
 
