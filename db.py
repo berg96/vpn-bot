@@ -103,7 +103,9 @@ def init_db():
         """)
         c.execute("CREATE INDEX IF NOT EXISTS ix_browser_links_fp ON browser_links(fingerprint)")
         c.execute("CREATE INDEX IF NOT EXISTS ix_browser_links_tg ON browser_links(tg_id)")
-        # Tinkoff rub-платежи: pending → confirmed/rejected. Webhook из Т-Банка сверяется с order_id.
+        # Tinkoff rub-платежи — ИСТОРИЧЕСКАЯ таблица, только хранение (24 платежа за
+        # апрель 2026). Эквайринг Т-Банка отвалился 29.04.2026, приём перешёл на
+        # Robokassa; код записи/чтения удалён 23.07.2026, DDL оставлен ради данных.
         c.execute("""
             CREATE TABLE IF NOT EXISTS tinkoff_payments (
                 order_id TEXT PRIMARY KEY,
@@ -780,54 +782,6 @@ def get_browsers_for_tg(tg_id: int) -> list[str]:
             (tg_id,),
         ).fetchall()
     return [r[0] for r in rows]
-
-
-def record_tinkoff_pending(
-    order_id: str, tg_id: int, plan_key: str, amount_kopeks: int, payment_id: str
-) -> None:
-    with _conn() as c:
-        c.execute(
-            "INSERT OR REPLACE INTO tinkoff_payments "
-            "(order_id, tg_id, plan_key, amount_kopeks, payment_id, status, created_at) "
-            "VALUES (?, ?, ?, ?, ?, 'pending', ?)",
-            (order_id, tg_id, plan_key, amount_kopeks, payment_id, _now_iso()),
-        )
-
-
-def get_tinkoff_payment(order_id: str) -> dict | None:
-    with _conn() as c:
-        row = c.execute(
-            "SELECT order_id, tg_id, plan_key, amount_kopeks, payment_id, status, created_at, confirmed_at "
-            "FROM tinkoff_payments WHERE order_id=?",
-            (order_id,),
-        ).fetchone()
-    if not row:
-        return None
-    return {
-        "order_id": row[0], "tg_id": row[1], "plan_key": row[2],
-        "amount_kopeks": row[3], "payment_id": row[4], "status": row[5],
-        "created_at": row[6], "confirmed_at": row[7],
-    }
-
-
-def mark_tinkoff_confirmed(order_id: str) -> bool:
-    """Атомарно переводит pending → confirmed. Возвращает True если это первый CONFIRMED
-    (нужно чтобы идемпотентно обрабатывать дубликаты webhook'ов Т-Банка)."""
-    with _conn() as c:
-        cur = c.execute(
-            "UPDATE tinkoff_payments SET status='confirmed', confirmed_at=? "
-            "WHERE order_id=? AND status != 'confirmed'",
-            (_now_iso(), order_id),
-        )
-        return cur.rowcount > 0
-
-
-def mark_tinkoff_rejected(order_id: str) -> None:
-    with _conn() as c:
-        c.execute(
-            "UPDATE tinkoff_payments SET status='rejected' WHERE order_id=? AND status='pending'",
-            (order_id,),
-        )
 
 
 def create_robokassa_pending(tg_id: int, plan_key: str, amount_kopeks: int) -> int:

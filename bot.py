@@ -21,7 +21,6 @@ import config
 import db
 import panel
 import referral
-import tinkoff
 
 
 def _resolve_mz_username(tg_id: int, tg_username: str | None, first_name: str | None) -> str:

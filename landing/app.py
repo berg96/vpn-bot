@@ -702,10 +702,6 @@ def _captive_sub_response(tg_id: int | None = None, ua: str = ""):
     return _Resp(content=body, media_type=media_type, headers=headers)
 
 
-# Backwards-compat alias — старое имя ещё может быть в логах/импортах.
-_expired_sub_response = _captive_sub_response
-
-
 async def _proxy_sub(sub_url: str, request: Request):
     """Скачивает sub-контент из активной панели и возвращает клиенту.
 
