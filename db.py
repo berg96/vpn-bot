@@ -1046,36 +1046,13 @@ SHARING_ALERT_PREFIXES = 5
 SHARING_ALERT_ASNS = 4
 
 
-def online_now(username: str, stale_min: int = ONLINE_STALE_MIN) -> dict | None:
-    """Что у юзера онлайн прямо сейчас — по последнему свежему снимку.
-
-    Возвращает None, если снимков нет или они протухли: это значит «трафика не
-    видно», а не «ноль устройств» (юзер мог просто выключить подключение).
-    Считается из данных ядра, поэтому клиент подделать это не может — в отличие
-    от x-hwid, который за 12 дней прислал 1 запрос подписки из 377.
-    """
-    if not username:
-        return None
-    since = _iso_ago_minutes(stale_min)
-    with _conn() as c:
-        row = c.execute(
-            "SELECT ts, n_ips, n_prefixes, n_asns, nodes FROM online_snapshots "
-            "WHERE username = ? AND ts >= ? ORDER BY ts DESC LIMIT 1",
-            (username, since),
-        ).fetchone()
-    if not row:
-        return None
-    return {
-        "ts": row[0],
-        "ips": int(row[1]),
-        "devices": int(row[2]),      # /24 — наша единица «устройства»
-        "asns": int(row[3]),
-        "nodes": row[4],
-    }
-
-
 def online_now_all(stale_min: int = ONLINE_STALE_MIN) -> list[dict]:
-    """Последний свежий снимок по каждому юзеру — для алертов и админ-сводки."""
+    """Последний свежий снимок по каждому юзеру — ТОЛЬКО для внутреннего учёта.
+
+    Юзерам это число не показываем: /24 занижает (два телефона в одном Wi-Fi =
+    одна подсеть), а скачки по мобильной сети завышают. Точного счётчика
+    устройств у нас нет — есть оценка «в скольких местах сидят одновременно».
+    """
     since = _iso_ago_minutes(stale_min)
     with _conn() as c:
         rows = c.execute(

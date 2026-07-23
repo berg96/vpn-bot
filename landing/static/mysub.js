@@ -17,15 +17,6 @@
     copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>',
     check: '<path d="M20 6 9 17l-5-5"/>'
   };
-  // Сколько устройств сейчас в сети. null/undefined = свежих данных нет (сбор
-  // идёт раз в 2 минуты) — тогда молчим: «0 устройств» неотличимо от «только что
-  // отключился» и выглядело бы как сбой.
-  function devicesSuffix(n) {
-    if (typeof n !== 'number' || n < 1) return '';
-    var word = (n % 10 === 1 && n % 100 !== 11) ? 'устройство'
-      : ((n % 10 >= 2 && n % 10 <= 4 && !(n % 100 >= 12 && n % 100 <= 14)) ? 'устройства' : 'устройств');
-    return ' · ' + n + ' ' + word + ' в сети';
-  }
   function svg(name, w) {
     return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="' +
       (w || 2) + '" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
@@ -79,8 +70,7 @@
         badge.className = 'mysub-badge ' + (expired ? 'exp' : 'ok');
         subline.innerHTML = expired
           ? (when ? 'подписка действовала до ' + when : 'подписка неактивна')
-          : '<span class="dot"></span>узнали этот браузер' + (when ? ' · активна до ' + when : '')
-            + devicesSuffix(d.devices_online);
+          : '<span class="dot"></span>узнали этот браузер' + (when ? ' · активна до ' + when : '');
 
         function paintUrl() {
           urlEl.textContent = revealed ? d.sub_url : masked(d.sub_url);

@@ -57,27 +57,6 @@ def _stable_sub_url(tg_id: int) -> str:
     return sub_tokens.sub_url(tg_id, base=LANDING_BASE_URL)
 
 
-def _devices_line(tg_id: int) -> str:
-    """Строка «сколько устройств сейчас в сети» для /profile.
-
-    Данные — из ядра (онлайн-IP с нод), а не из заголовков клиента: подделать
-    нечем. Если свежих снимков нет, строку не рисуем вовсе — «0 устройств» было
-    бы враньём (человек мог просто отключиться, а сбор идёт раз в 2 минуты).
-    """
-    try:
-        now = db.online_now(db.get_mz_username(tg_id))
-    except Exception as e:  # учёт устройств не должен ронять /profile
-        logger.warning(f"online_now failed for {tg_id}: {e}")
-        return ""
-    if not now:
-        return ""
-    n = now["devices"]
-    word = "устройство" if n % 10 == 1 and n % 100 != 11 else (
-        "устройства" if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14 else "устройств"
-    )
-    return f"📱 Сейчас в сети: <b>{n} {word}</b>\n"
-
-
 def _install_url(tg_id: int) -> str:
     """URL для кнопки 'Открыть в приложении' — HMAC-токен, чтобы нельзя было
     подобрать перебором (раньше URL содержал mz_username открытым текстом)."""
@@ -700,8 +679,7 @@ async def cmd_profile(event: Message | CallbackQuery):
 
         text = (
             f"{status_emoji} Статус: <b>{status}</b>\n"
-            f"{expire_line}\n"
-            f"{_devices_line(tg_id)}\n"
+            f"{expire_line}\n\n"
             f"🔗 Ссылка для подключения:\n<code>{sub_url}</code>\n\n"
             "Импортируй ссылку в приложение: FLClash (Android/Windows), "
             "Karing (iPhone/iPad/Mac)."
