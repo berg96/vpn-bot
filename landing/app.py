@@ -263,7 +263,10 @@ APP_DOWNLOADS = {
     "flclash_windows": "https://github.com/chen08209/FlClash/releases/download/v0.8.93/FlClash-0.8.93-windows-amd64-setup.exe",
     "flclash_macos_arm": "https://github.com/chen08209/FlClash/releases/download/v0.8.93/FlClash-0.8.93-macos-arm64.dmg",
     "flclash_macos_x64": "https://github.com/chen08209/FlClash/releases/download/v0.8.93/FlClash-0.8.93-macos-amd64.dmg",
-    "karing_ios": "https://apps.apple.com/app/karing/id6472431552",
+    # Один и тот же App Store для iPhone/iPad и Mac. На macOS Karing — основной
+    # клиент: нотаризован (нет Gatekeeper-стены, как у FLClash с GitHub) и читает
+    # тот же MIHOMO-YAML, т.е. умная маршрутизация сохраняется.
+    "karing": "https://apps.apple.com/app/karing/id6472431552",
 }
 
 

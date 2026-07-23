@@ -183,6 +183,11 @@ FLCLASH_ANDROID = "https://github.com/chen08209/FlClash/releases/download/v0.8.9
 FLCLASH_WINDOWS = "https://github.com/chen08209/FlClash/releases/download/v0.8.92/FlClash-0.8.92-windows-amd64-setup.exe"
 FLCLASH_MACOS_ARM = "https://github.com/chen08209/FlClash/releases/download/v0.8.92/FlClash-0.8.92-macos-arm64.dmg"
 FLCLASH_MACOS_X64 = "https://github.com/chen08209/FlClash/releases/download/v0.8.92/FlClash-0.8.92-macos-amd64.dmg"
+# Karing — один и тот же App Store для iOS и macOS. На маке он ГЛАВНЫЙ клиент:
+# нотаризован Apple, поэтому нет Gatekeeper'а («не может проверить» у FLClash с
+# GitHub — на нём вставал каждый маковод), и подписку читает тем же MIHOMO-YAML,
+# что и на iOS, т.е. умная маршрутизация сохраняется.
+KARING_APPSTORE = "https://apps.apple.com/app/karing/id6472431552"
 
 APPS_TEXT = {
     "android": (
@@ -195,7 +200,7 @@ APPS_TEXT = {
     ),
     "ios": (
         "📱 <b>iOS — Karing</b>\n\n"
-        "1. Установи <a href='https://apps.apple.com/app/karing/id6472431552'>Karing</a> из App Store\n\n"
+        f"1. Установи <a href='{KARING_APPSTORE}'>Karing</a> из App Store\n\n"
         "2. Открой бота → /profile → скопируй ссылку подписки\n\n"
         "3. В Karing: нажми <b>+</b> → <b>Импорт из буфера обмена</b>\n\n"
         "4. Нажми <b>Connect</b>\n\n"
@@ -210,12 +215,22 @@ APPS_TEXT = {
         "✅ Готово!"
     ),
     "macos": (
-        "💻 <b>macOS — FLClash</b>\n\n"
-        "1. Скачай FLClash (кнопка ниже — выбери свой Mac)\n\n"
-        "2. Открой бота → /profile → скопируй ссылку\n\n"
-        "3. В FLClash: нажми <b>+</b> → <b>Import from URL</b>\n\n"
-        "4. Вставь ссылку → нажми <b>Подключить</b>\n\n"
-        "✅ Готово!"
+        "💻 <b>macOS — Karing</b>\n\n"
+        f"1. Установи <a href='{KARING_APPSTORE}'>Karing</a> из App Store\n\n"
+        "2. Открой бота → /profile → скопируй ссылку подписки\n\n"
+        "3. В Karing: нажми <b>+</b> → <b>Импорт из буфера обмена</b>\n\n"
+        "4. Нажми <b>Connect</b>\n\n"
+        "✅ Готово! Это то же приложение, что и на iPhone — одна ссылка на все устройства.\n\n"
+        "— — —\n"
+        "<b>Запасной вариант — FLClash</b> (кнопки ниже, выбери свой Mac: "
+        "M-серия → arm64, Intel → amd64).\n"
+        "При первом запуске macOS скажет «не может проверить на наличие "
+        "вредоносного ПО» — это защита Gatekeeper, приложение просто не из "
+        "App Store. Как открыть:\n"
+        "• <b>Системные настройки</b> → <b>Конфиденциальность и безопасность</b> → "
+        "пролистай вниз → <b>«Всё равно открыть»</b>\n"
+        "• либо в Терминале: <code>xattr -dr com.apple.quarantine "
+        "/Applications/FlClash.app</code>"
     ),
     "routing": (
         "🔧 <b>Умная маршрутизация</b>\n\n"
@@ -223,7 +238,7 @@ APPS_TEXT = {
         "без потери скорости.\n"
         "Всё остальное идёт через сервис.\n\n"
         "Маршрутизация встроена в профиль автоматически.\n"
-        "Просто добавь ссылку подписки в FLClash — всё настроится само."
+        "Просто добавь ссылку подписки в приложение — всё настроится само."
     ),
 }
 
@@ -278,8 +293,8 @@ async def _do_start(tg_id: int, username: str | None, first_name: str | None, an
                 "🔗 Ссылка для подключения:\n"
                 f"<code>{sub_url}</code>\n\n"
                 "📱 <b>Как подключиться:</b>\n"
-                "• <b>Android / Windows / macOS</b> → FLClash\n"
-                "• <b>iOS</b> → Karing\n\n"
+                "• <b>Android / Windows</b> → FLClash\n"
+                "• <b>iPhone / iPad / Mac</b> → Karing\n\n"
                 "Нажми <b>📲 Открыть в приложении</b> — импортируется сразу 👇",
                 parse_mode=ParseMode.HTML,
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -666,8 +681,8 @@ async def cmd_profile(event: Message | CallbackQuery):
             f"{status_emoji} Статус: <b>{status}</b>\n"
             f"{expire_line}\n\n"
             f"🔗 Ссылка для подключения:\n<code>{sub_url}</code>\n\n"
-            "Импортируй ссылку в приложение: FLClash (Android/Windows/macOS), "
-            "Karing (iOS)."
+            "Импортируй ссылку в приложение: FLClash (Android/Windows), "
+            "Karing (iPhone/iPad/Mac)."
         )
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔄 Продлить", callback_data="back_to_plans")],
@@ -781,6 +796,7 @@ async def cb_apps_platform(call: CallbackQuery):
         ])
     elif platform == "macos":
         kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⬇️ Karing — App Store (рекомендуем)", url=KARING_APPSTORE)],
             [InlineKeyboardButton(text="⬇️ FLClash — M1/M2/M3 (arm64)", url=FLCLASH_MACOS_ARM)],
             [InlineKeyboardButton(text="⬇️ FLClash — Intel (amd64)", url=FLCLASH_MACOS_X64)],
             [InlineKeyboardButton(text="← Выбрать платформу", callback_data="apps_menu")],

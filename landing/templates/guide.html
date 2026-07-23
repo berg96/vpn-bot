@@ -25,7 +25,7 @@
     </button>
     <button class="guide-tab" data-tab="windows" type="button">
       <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M3 5.3l7.4-1V11H3V5.3zM3 18.7l7.4 1V13H3v5.7zM11.4 19.8L21 21V13h-9.6v6.8zM11.4 4.2V11H21V3l-9.6 1.2z"/></svg>
-      Windows / macOS
+      Windows / Mac
     </button>
   </div>
 
@@ -117,7 +117,7 @@
         <div class="guide-download-title">Karing для iOS</div>
         <div class="guide-download-sub">App Store · iPhone / iPad</div>
       </div>
-      <a class="btn btn-primary" href="{{ downloads.karing_ios }}" target="_blank" rel="noopener nofollow">Скачать</a>
+      <a class="btn btn-primary" href="{{ downloads.karing }}" target="_blank" rel="noopener nofollow">Скачать</a>
     </div>
 
     <div class="guide-steps">
@@ -205,17 +205,16 @@
     </div>
   </div>
 
-  <!-- Windows / macOS -->
+  <!-- Windows / Mac -->
   <div class="guide-content" id="tab-windows" style="display:none">
     <div class="guide-download-banner" style="flex-wrap:wrap;gap:12px">
       <div>
-        <div class="guide-download-title">FLClash для Windows и macOS</div>
+        <div class="guide-download-title">Windows — FLClash, macOS — Karing</div>
         <div class="guide-download-sub">Бесплатно, без аккаунта</div>
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <a class="btn btn-primary" href="{{ downloads.flclash_windows }}" target="_blank" rel="noopener nofollow">Windows · .exe</a>
-        <a class="btn btn-ghost" href="{{ downloads.flclash_macos_arm }}" target="_blank" rel="noopener nofollow">macOS M-серия</a>
-        <a class="btn btn-ghost" href="{{ downloads.flclash_macos_x64 }}" target="_blank" rel="noopener nofollow">macOS Intel</a>
+        <a class="btn btn-primary" href="{{ downloads.karing }}" target="_blank" rel="noopener nofollow">macOS · App Store</a>
       </div>
     </div>
 
@@ -224,8 +223,17 @@
         <div class="guide-step-num">1</div>
         <div class="guide-step-body">
           <img class="guide-shot" src="/static/guide/win-1.jpg" alt="RadarShield win — шаг 1" loading="lazy" onerror="this.remove()">
-          <h3>Скачай и установи FLClash</h3>
-          <p>Выбери кнопку выше под свою систему. На Windows запусти <code>.exe</code>, на macOS — <code>.dmg</code>.</p>
+          <h3>Скачай и установи клиент</h3>
+          <p>На <b>Windows</b> — FLClash: запусти <code>.exe</code>. На <b>Mac</b> — Karing из App Store: то же приложение, что и на iPhone, ставится в один клик.</p>
+          <details style="margin-top:10px">
+            <summary style="cursor:pointer;color:var(--accent)">Нужен FLClash на Mac (запасной вариант)</summary>
+            <p style="margin-top:8px">Скачай <a href="{{ downloads.flclash_macos_arm }}" target="_blank" rel="noopener nofollow">версию для M-серии</a> или <a href="{{ downloads.flclash_macos_x64 }}" target="_blank" rel="noopener nofollow">для Intel</a> — архитектуру видно в «Об этом Mac».</p>
+            <p>При первом запуске macOS напишет, что <b>«не может проверить приложение на наличие вредоносного ПО»</b>. Так система относится ко всем программам не из App Store, с самим VPN это не связано. Открыть можно двумя способами:</p>
+            <ul>
+              <li><b>Системные настройки</b> → <b>Конфиденциальность и безопасность</b> → пролистай вниз → <b>«Всё равно открыть»</b>.</li>
+              <li>Или в Терминале: <code>xattr -dr com.apple.quarantine /Applications/FlClash.app</code> — после этого приложение открывается обычным двойным кликом.</li>
+            </ul>
+          </details>
         </div>
       </div>
 
@@ -235,7 +243,7 @@
           <img class="guide-shot" src="/static/guide/win-2.jpg" alt="RadarShield win — шаг 2" loading="lazy" onerror="this.remove()">
           <h3>Добавь профиль по URL</h3>
           <ol>
-            <li>Открой FLClash → нажми <b>+</b> → <b>Import from URL</b></li>
+            <li>Открой клиент → нажми <b>+</b> → <b>Import from URL</b> (в Karing — <b>Импорт из буфера обмена</b>)</li>
             <li>Вставь свою ссылку-подписку RadarShield</li>
             <li>Нажми <b>Подключить</b></li>
           </ol>
