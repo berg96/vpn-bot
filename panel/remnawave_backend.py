@@ -33,6 +33,9 @@ _STATUS_FROM_RW = {v: k for k, v in _STATUS_TO_RW.items()}
 # Для «бессрочных» (Marzban expire=0) Remnawave требует дату — ставим далёкую.
 _FOREVER = "2099-01-01T00:00:00.000Z"
 
+# Тело restart обязательно (zod: forceRestart boolean); без него и с {} панель отвечает 400.
+_RESTART_BODY = {"forceRestart": False}
+
 
 def _epoch_to_iso(ts: int) -> str:
     return datetime.fromtimestamp(ts, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
@@ -316,7 +319,9 @@ class RemnawaveBackend(PanelBackend):
         """Нормализует ноды Remnawave в Marzban-форму (status connected/…, id, name)."""
         out = []
         for n in await self._nodes_raw():
-            if n.get("isConnected"):
+            if n.get("isDisabled"):
+                status = "disabled"
+            elif n.get("isConnected"):
                 status = "connected"
             elif n.get("isConnecting"):
                 status = "connecting"
@@ -335,12 +340,14 @@ class RemnawaveBackend(PanelBackend):
 
     async def reconnect_node(self, node_id) -> None:
         s = await self._sess()
-        resp = await s.post(f"{self.url}/api/nodes/{node_id}/actions/restart")
+        resp = await s.post(
+            f"{self.url}/api/nodes/{node_id}/actions/restart", json=_RESTART_BODY
+        )
         resp.raise_for_status()
 
     async def core_restart(self) -> bool:
         """Перезапуск ядра во всём флоте нод Remnawave (best-effort)."""
         s = await self._sess()
-        resp = await s.post(f"{self.url}/api/nodes/actions/restart-all")
+        resp = await s.post(f"{self.url}/api/nodes/actions/restart-all", json=_RESTART_BODY)
         resp.raise_for_status()
         return True

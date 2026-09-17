@@ -1220,6 +1220,11 @@ async def _check_nodes_health(session: aiohttp.ClientSession) -> None:
                 await _send_alert(session, f"✅ Нода <b>{name}</b> снова connected.")
             continue
 
+        # Выключенную в панели ноду не чиним: restart на неё панель отвергает (400).
+        if status == "disabled":
+            _node_alerted.pop(node_id, None)
+            continue
+
         # status != connected — пытаемся починить через master API reconnect.
         # Кроме status=="connecting" — мастер уже сам тянет коннект, наш reconnect
         # открывает конкурирующую сессию и роняет Xray core (incident 2026-05-10).
@@ -1478,7 +1483,7 @@ async def cmd_nodes(msg: Message):
         nodes = await panel.get_nodes()
         lines = ["📡 <b>Статус нод RadarShield</b>\n"]
         for n in nodes:
-            emoji = "✅" if n.get("status") == "connected" else "⚠️"
+            emoji = {"connected": "✅", "disabled": "⏸️"}.get(n.get("status"), "⚠️")
             lines.append(
                 f"{emoji} <b>{n.get('name')}</b> — {n.get('status')} "
                 f"(xray {n.get('xray_version') or '—'})"
