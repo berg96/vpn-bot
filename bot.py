@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 
 from aiogram import Bot, Dispatcher, F, BaseMiddleware
 from aiogram.types import (
-    Message, CallbackQuery, Update, TelegramObject,
+    Message, CallbackQuery, TelegramObject,
     InlineKeyboardMarkup, InlineKeyboardButton,
     LabeledPrice, PreCheckoutQuery,
 )
@@ -1329,7 +1329,6 @@ async def _check_expire_reminders() -> int:
             continue
 
         expire = mz_user.get("expire") or 0
-        status = mz_user.get("status")
         if not expire:
             # Бессрочная подписка (безлимит) — напоминания не нужны
             continue

@@ -1,5 +1,4 @@
 import os
-from dataclasses import dataclass
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 BOT_USERNAME = os.environ.get("BOT_USERNAME", "radarshield_bot")

@@ -471,7 +471,7 @@ async def create_trial(
     expires_at = (datetime.now(timezone.utc) + timedelta(hours=TRIAL_HOURS)).isoformat()
 
     try:
-        user_data = await panel.create_landing_trial(
+        await panel.create_landing_trial(
             mz_name, hours=TRIAL_HOURS, data_limit_mb=TRIAL_DATA_MB,
         )
     except Exception as e:

@@ -354,7 +354,7 @@ def _winback_text(days: int) -> str:
     )
 
 
-_WINBACK_BUTTONS = lambda u: [
+_WINBACK_BUTTONS = lambda u: [  # noqa: E731
     [{"text": "🔑 Моя подписка", "url": "https://t.me/radarshield_bot?start=profile"}],
     [{"text": "🆘 Поддержка", "url": "https://t.me/radarshield_support_bot"}],
 ]
