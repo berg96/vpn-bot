@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>RadarShield — блок «Моя подписка»</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0b1622; --bg-2:#0d1b2a; --panel:#12243a; --panel-2:#16304d;
+    --line:rgba(255,255,255,0.08); --line-2:rgba(255,255,255,0.14);
+    --ink:#eef3f9; --ink-dim:#b7c4d3; --ink-mute:#7f8fa3;
+    --accent:#ffb703; --ok:#2fc98a; --warn:#e8a13a;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:#0a121c;color:var(--ink);font-family:'Inter',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  a{color:inherit;text-decoration:none}
+
+  .page{max-width:1180px;margin:0 auto;padding:40px 28px 80px}
+  .head{display:flex;flex-direction:column;gap:8px;margin-bottom:36px}
+  .head h1{font-family:'Manrope';font-weight:800;font-size:30px;letter-spacing:-0.02em;margin:0}
+  .head p{color:var(--ink-dim);font-size:15px;margin:0;max-width:760px;line-height:1.5}
+
+  .toolbar{display:flex;flex-wrap:wrap;gap:8px;margin:22px 0 40px}
+  .toolbar button{font:600 13px 'Inter';color:var(--ink-dim);background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:9px 14px;cursor:pointer;transition:all .15s}
+  .toolbar button.on{background:var(--accent);color:#1a1208;border-color:var(--accent)}
+  .toolbar button:hover:not(.on){border-color:var(--line-2);color:var(--ink)}
+
+  .stage-label{font:600 12px 'Inter';color:var(--ink-mute);letter-spacing:.12em;text-transform:uppercase;margin:0 0 16px}
+
+  /* ============ MYSUB CARD ============ */
+  .mysub{
+    background:linear-gradient(180deg, var(--panel), #10203442);
+    border:1px solid var(--line-2);border-radius:18px;padding:24px 24px 22px;
+    max-width:560px;position:relative;overflow:hidden;
+  }
+  .mysub::before{content:"";position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(120% 90% at 100% 0%, rgba(255,183,3,0.06), transparent 55%)}
+  .mysub .top{display:flex;align-items:center;gap:11px;position:relative;z-index:1}
+  .mysub .ava{width:38px;height:38px;border-radius:11px;background:rgba(255,183,3,0.13);border:1px solid rgba(255,183,3,0.28);display:grid;place-items:center;flex-shrink:0}
+  .mysub .ava svg{width:20px;height:20px;color:var(--accent)}
+  .mysub .who{flex:1;min-width:0}
+  .mysub .who .t{font-family:'Manrope';font-weight:700;font-size:16px;letter-spacing:-0.01em}
+  .mysub .who .s{font-size:12.5px;color:var(--ink-mute);margin-top:2px;display:flex;align-items:center;gap:6px}
+  .mysub .who .s .dot{width:6px;height:6px;border-radius:50%;background:var(--ok)}
+  .badge{font-size:11.5px;font-weight:600;padding:4px 10px;border-radius:999px;white-space:nowrap}
+  .badge.ok{background:rgba(47,201,138,0.14);color:var(--ok);border:1px solid rgba(47,201,138,0.3)}
+  .badge.exp{background:rgba(232,161,58,0.14);color:var(--warn);border:1px solid rgba(232,161,58,0.32)}
+
+  /* link row */
+  .linkrow{margin-top:18px;display:flex;align-items:center;gap:10px;background:var(--bg-2);border:1px solid var(--line);border-radius:12px;padding:12px 12px 12px 14px;position:relative;z-index:1}
+  .linkrow .key{width:16px;height:16px;color:var(--ink-mute);flex-shrink:0}
+  .linkrow .url{flex:1;min-width:0;font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--ink-dim);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;letter-spacing:.2px}
+  .linkrow .reveal{background:transparent;border:0;color:var(--ink-mute);cursor:pointer;font:600 12px 'Inter';display:flex;align-items:center;gap:5px;padding:5px 8px;border-radius:7px;flex-shrink:0}
+  .linkrow .reveal:hover{color:var(--ink);background:rgba(255,255,255,0.05)}
+  .linkrow .reveal svg{width:15px;height:15px}
+
+  /* actions */
+  .acts{margin-top:14px;display:flex;gap:10px;position:relative;z-index:1}
+  .btn{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:13px 16px;border-radius:12px;font:700 14.5px 'Manrope';cursor:pointer;border:1px solid transparent;transition:all .15s;white-space:nowrap}
+  .btn svg{width:17px;height:17px}
+  .btn-primary{background:var(--accent);color:#1a1208}
+  .btn-primary:hover{filter:brightness(1.06)}
+  .btn-ghost{background:transparent;color:var(--ink);border-color:var(--line-2);flex:0 0 auto;padding:13px 16px}
+  .btn-ghost:hover{border-color:rgba(255,255,255,0.28);background:rgba(255,255,255,0.04)}
+  .btn-copied{background:rgba(47,201,138,0.16)!important;color:var(--ok)!important;border-color:rgba(47,201,138,0.4)!important}
+
+  .hint{margin-top:12px;font-size:12.5px;color:var(--ink-mute);line-height:1.5;position:relative;z-index:1}
+  .hint a{color:var(--ink-dim);border-bottom:1px dashed var(--ink-mute)}
+  .hint a:hover{color:var(--ink)}
+
+  /* expired note */
+  .expnote{margin-top:16px;background:rgba(232,161,58,0.08);border:1px solid rgba(232,161,58,0.25);border-radius:12px;padding:13px 15px;display:flex;gap:11px;position:relative;z-index:1}
+  .expnote svg{width:17px;height:17px;color:var(--warn);flex-shrink:0;margin-top:1px}
+  .expnote .txt{font-size:13px;color:var(--ink-dim);line-height:1.45}
+  .expnote .txt b{color:var(--ink);font-weight:600}
+
+  /* ============ placement context ============ */
+  .ctx{margin-top:64px}
+  .browser{max-width:900px;margin:0 auto;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--bg-2)}
+  .browser .bar{height:38px;background:#0a141f;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:7px;padding:0 14px}
+  .browser .bar i{width:11px;height:11px;border-radius:50%;background:#2a3846;display:block}
+  .browser .bar .addr{margin-left:12px;font-size:12px;color:var(--ink-mute);font-family:'JetBrains Mono',monospace}
+  .fauxhero{padding:46px 40px 34px;text-align:center;border-bottom:1px dashed var(--line)}
+  .fauxhero .eyebrow{font-size:12px;color:var(--accent);letter-spacing:.08em;text-transform:uppercase;font-weight:600}
+  .fauxhero h2{font-family:'Manrope';font-weight:800;font-size:34px;letter-spacing:-0.03em;margin:14px 0 0;line-height:1.05}
+  .fauxhero p{color:var(--ink-dim);margin:14px 0 22px;font-size:15px}
+  .fauxhero .cta{display:inline-flex;gap:10px}
+  .fauxhero .cta .b{padding:12px 20px;border-radius:11px;font:700 14px 'Manrope'}
+  .fauxhero .cta .b1{background:var(--accent);color:#1a1208}
+  .fauxhero .cta .b2{border:1px solid var(--line-2);color:var(--ink)}
+  .slot{padding:30px 40px;display:flex;justify-content:center;position:relative}
+  .slot .tag{position:absolute;top:8px;left:50%;transform:translateX(-50%);font-size:11px;color:var(--accent);letter-spacing:.1em;text-transform:uppercase;font-weight:600;white-space:nowrap}
+  .fauxnext{padding:30px 40px 44px;text-align:center;opacity:.5}
+  .fauxnext .rowcards{display:flex;gap:14px;justify-content:center;margin-top:18px}
+  .fauxnext .rowcards div{width:150px;height:88px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+  .fauxnext h3{font-family:'Manrope';font-weight:700;font-size:18px;margin:0}
+
+  .entry{display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--ink-dim);border:1px solid var(--line);border-radius:999px;padding:6px 13px;background:var(--panel)}
+  .entry .dot{width:7px;height:7px;border-radius:50%;background:var(--ok)}
+  .entry b{color:var(--ink);font-weight:600}
+
+  .note-block{max-width:560px;margin:22px 0 0;font-size:13px;color:var(--ink-mute);line-height:1.6}
+  .note-block b{color:var(--ink-dim);font-weight:600}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="head">
+    <h1>Блок «Моя подписка»</h1>
+    <p>Аварийный сценарий: вернувшийся пользователь потерял ссылку подписки. Показывается только узнанному браузеру, ниже первого экрана. Ниже — четыре состояния и рекомендованное размещение.</p>
+    <p style="margin-top:6px;font-size:13.5px;color:var(--ink-mute)"><b style="color:var(--ink-dim);font-weight:600">Сейчас у вас</b> блок стоит первым элементом, над «Интернет открыт…» — он перебивает оффер. Предложение: убрать его оттуда и показывать <b style="color:var(--ink-dim);font-weight:600">сразу под hero</b> (перед секцией «Клиенты»), плюс тихая ссылка «Моя подписка» в шапке.</p>
+  </div>
+
+  <div class="toolbar" id="toolbar">
+    <button data-s="active" class="on">2 · Активна</button>
+    <button data-s="revealed">2b · Ссылка раскрыта</button>
+    <button data-s="copied">4 · Скопировано</button>
+    <button data-s="expired">3 · Истекла</button>
+    <button data-s="none">1 · Браузер не узнан</button>
+  </div>
+
+  <p class="stage-label">Состояние блока</p>
+  <div id="mount"></div>
+
+  <div class="note-block" id="notebox"></div>
+
+  <!-- placement -->
+  <div class="ctx">
+    <p class="stage-label">Где живёт на странице</p>
+    <div class="browser">
+      <div class="bar"><i></i><i></i><i></i><span class="addr">radarshield.mooo.com</span>
+        <span style="margin-left:auto"><span class="entry"><span class="dot"></span>Моя подписка</span></span>
+      </div>
+      <div class="fauxhero">
+        <div class="eyebrow">● Сервис работает</div>
+        <h2>Интернет открыт.<br/>Даже когда его закрывают.</h2>
+        <p>Два протокола вместо одного. Российские сайты и банки — напрямую.</p>
+        <div class="cta"><span class="b b1">Попробовать 3 часа бесплатно</span><span class="b b2">7 дней через Telegram</span></div>
+      </div>
+      <div class="slot">
+        <span class="tag">↓ рекомендую здесь — сразу под hero, до «Платформы»</span>
+        <div id="mount-ctx"></div>
+      </div>
+      <div class="fauxnext">
+        <h3>Клиенты · Четыре платформы</h3>
+        <div class="rowcards"><div></div><div></div><div></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const ICON = {
+    user:'<path d="M20 21a8 8 0 1 0-16 0"/><circle cx="12" cy="11" r="4"/>',
+    key:'<path d="M15 7a4 4 0 1 0-4 4"/><path d="M11 11 3 19v2h2l1-1h2v-2h2l1.5-1.5"/>',
+    eye:'<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
+    eyeoff:'<path d="M9.9 4.2A9.5 9.5 0 0 1 12 4c6.5 0 10 7 10 7a17 17 0 0 1-3.3 4M6.6 6.6A17 17 0 0 0 2 12s3.5 7 10 7a9.4 9.4 0 0 0 4.5-1.1"/><path d="m4 4 16 16"/>',
+    open:'<path d="M14 3h7v7"/><path d="M21 3 10 14"/><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/>',
+    copy:'<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>',
+    check:'<path d="M20 6 9 17l-5-5"/>',
+    warn:'<path d="M12 9v4M12 17h.01M10.3 4l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3L13.7 4a2 2 0 0 0-3.4 0z"/>',
+  };
+  const svg = (n,w=2)=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round">${ICON[n]}</svg>`;
+  const MASK = 'https://radarshield.mooo.com/s/••••••••';
+  const REAL = 'https://radarshield.mooo.com/s/8f3ak29qz4';
+
+  const NOTES = {
+    active:'<b>Активна.</b> Основное действие — «Открыть в приложении» (deep-link). Прямо под ним — запасной путь: скопировать и вставить вручную, на случай если приложение не установлено (детект недоступен, поэтому фолбэк всегда на виду). Ссылка замаскирована — читать её не нужно.',
+    revealed:'<b>Ссылка раскрыта.</b> По клику на «показать» токен виден — для случая, когда нужно скопировать глазами или проверить. По умолчанию скрыт (шоулдер-сёрфинг, скриншоты).',
+    copied:'<b>Скопировано.</b> Кнопка «Скопировать» подтверждает действие на 1.5 с и возвращается назад.',
+    expired:'<b>Истекла.</b> Основное действие меняется на «Продлить» (ведёт на оплату). Ссылка остаётся доступной + пояснение, что после продления она же снова заработает — не нужно брать новую.',
+    none:'<b>Браузер не узнан.</b> Блока нет вообще — ни плейсхолдера, ни «залогиньтесь». Это большинство посетителей. В шапке остаётся тихая ссылка «Моя подписка» на случай, если человек знает, что искать.',
+    _nick:'Никнейм <b>@artem_k</b> в шапке карточки — чтобы человек сразу убедился, что браузер узнал именно его аккаунт (нужно добавить поле username/nickname в ответ эндпоинта).',
+  };
+
+  let revealed = false;
+
+  function card(state){
+    if(state==='none'){
+      return `<div style="max-width:560px;border:1px dashed var(--line-2);border-radius:16px;padding:26px;text-align:center;color:var(--ink-mute);font-size:13.5px">
+        Для этого посетителя блок не рендерится.<br/><span style="font-size:12.5px;opacity:.8">(<code style="font-family:'JetBrains Mono',monospace">found: false</code> → пусто)</span></div>`;
+    }
+    const exp = state==='expired';
+    const isRevealed = state==='revealed' || revealed;
+    const copied = state==='copied';
+    const url = isRevealed ? REAL : MASK;
+
+    return `<div class="mysub">
+      <div class="top">
+        <div class="ava">${svg('user',2)}</div>
+        <div class="who">
+          <div class="t">Аккаунт <span style="color:var(--accent)">@artem_k</span></div>
+          <div class="s">${exp?'':'<span class="dot"></span>'}${exp?'подписка действовала до 3 июля 2026':'узнали этот браузер · активна до 14 авг 2026'}</div>
+        </div>
+        <span class="badge ${exp?'exp':'ok'}">${exp?'неактивна':'активна'}</span>
+      </div>
+
+      <div class="linkrow">
+        <span class="key">${svg('key',2)}</span>
+        <span class="url">${url}</span>
+        <button class="reveal" onclick="toggleReveal()">${svg(isRevealed?'eyeoff':'eye',2)}${isRevealed?'скрыть':'показать'}</button>
+      </div>
+
+      ${exp?`<div class="expnote">${svg('warn',2)}<div class="txt"><b>Подписка неактивна.</b> Продлите — и эта же ссылка снова заработает, новую брать не нужно.</div></div>`:''}
+
+      <div class="acts">
+        ${exp
+          ? `<button class="btn btn-primary" style="flex:1">Продлить подписку</button>
+             <button class="btn btn-ghost" onclick="doCopy(this)">${svg('copy',2)}</button>`
+          : `<button class="btn btn-primary" style="flex:1">${svg('open',2)}Открыть в приложении</button>
+             <button class="btn btn-ghost ${copied?'btn-copied':''}" onclick="doCopy(this)">${copied?svg('check',2.4):svg('copy',2)}${copied?'':''}</button>`}
+      </div>
+
+      <div class="hint">
+        ${exp
+          ? 'После оплаты доступ вернётся автоматически. Ссылку можно скопировать уже сейчас.'
+          : 'Не открылось? Приложение ещё не установлено — <a href="#">скачайте клиент</a>, затем скопируйте ссылку и вставьте вручную.'}
+      </div>
+    </div>`;
+  }
+
+  let current='active';
+  function render(){
+    document.getElementById('mount').innerHTML = card(current);
+    document.getElementById('mount-ctx').innerHTML = card(current==='none'?'none':(current==='expired'?'expired':'active'));
+    document.getElementById('notebox').innerHTML = NOTES[current];
+  }
+  window.toggleReveal=function(){ revealed=!revealed; if(current!=='revealed'&&current!=='copied'){} render(); };
+  window.doCopy=function(btn){
+    const b=btn; b.classList.add('btn-copied'); b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+    setTimeout(()=>render(),1500);
+  };
+  document.getElementById('toolbar').addEventListener('click',e=>{
+    const b=e.target.closest('button'); if(!b)return;
+    [...document.querySelectorAll('#toolbar button')].forEach(x=>x.classList.toggle('on',x===b));
+    current=b.dataset.s; revealed=(current==='revealed'); render();
+  });
+  render();
+</script>
+</body>
+</html>
