@@ -26,6 +26,8 @@ PLANS = [
     {"name": "3 месяца", "price": 599},
     {"name": "1 год", "price": 1890},
 ]
+PRICES = {"1m": 250, "3m": 599, "1y": 1890}
+TRIAL_HOURS = 3
 
 
 class _URL:
@@ -62,8 +64,8 @@ def _base_context(path, with_requisites=True):
         "active_token": None,
         "link_uid": "",
         "link_sig": "",
-        "home_faq": seo.HOME_FAQ,
-        "home_jsonld": seo.home_jsonld(SITE, PLANS),
+        "home_faq": seo.home_faq(PRICES, TRIAL_HOURS),
+        "home_jsonld": seo.home_jsonld(SITE, PLANS, seo.home_faq(PRICES, TRIAL_HOURS)),
         "page_updated": "2026-10-24",
         "title": "Публичная оферта",
         "heading": "Публичная оферта (договор)",
@@ -105,14 +107,14 @@ def test_home_faq_visible_and_matches_markup():
     html = _env().get_template("index.html").render(**_base_context("/"))
     graph = json.loads(_jsonld_blocks(html)[-1])["@graph"]
     faq = next(n for n in graph if n["@type"] == "FAQPage")
-    assert len(faq["mainEntity"]) == len(seo.HOME_FAQ)
-    for question, answer in seo.HOME_FAQ:
+    assert len(faq["mainEntity"]) == len(seo._HOME_FAQ)
+    for question, answer in seo.home_faq(PRICES, TRIAL_HOURS):
         assert question in html
         assert answer in html
 
 
 def test_home_jsonld_offers_from_plans():
-    graph = seo.home_jsonld(SITE, PLANS)["@graph"]
+    graph = seo.home_jsonld(SITE, PLANS, seo.home_faq(PRICES, TRIAL_HOURS))["@graph"]
     app = next(n for n in graph if n["@type"] == "SoftwareApplication")
     prices = [o["price"] for o in app["offers"]]
     assert prices == ["250", "599", "1890", "0"]
@@ -137,8 +139,20 @@ def test_sitemap_lists_public_pages_with_lastmod():
 
 
 def test_llms_txt_has_facts_and_links():
-    txt = seo.llms_txt(SITE, "radarshield_bot", "support@example.test")
+    txt = seo.llms_txt(SITE, "radarshield_bot", "support@example.test",
+                       PRICES, TRIAL_HOURS)
     assert txt.startswith("# RadarShield")
     assert f"{SITE}/guide" in txt
     assert "1890 ₽" in txt
     assert "https://t.me/radarshield_bot" in txt
+
+
+def test_texts_follow_real_tariffs():
+    """Цены в FAQ и llms.txt берутся из конфига, а не из прошлогодней правки."""
+    import config as cfg
+    prices = {k: kop // 100 for k, (_n, _d, _s, _ss, kop, _rs) in cfg.PLANS.items()}
+    answers = " ".join(a for _q, a in seo.home_faq(prices, TRIAL_HOURS))
+    txt = seo.llms_txt(SITE, "bot", "mail@example.test", prices, TRIAL_HOURS)
+    for value in prices.values():
+        assert f"{value} ₽" in answers
+        assert f"{value} ₽" in txt

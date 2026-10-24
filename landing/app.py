@@ -90,6 +90,16 @@ DOCS_UPDATED_AT = os.environ.get("DOCS_UPDATED_AT", "23 апреля 2026 г.")
 SITE_URL = os.environ.get("SITE_URL", "https://radarshield.mooo.com").rstrip("/")
 
 
+def _plan_prices() -> dict[str, int]:
+    """Цены тарифов в рублях из config.PLANS: тексты FAQ и llms.txt берут их
+    оттуда же, что и страница оплаты."""
+    import config as _cfg
+    return {
+        key: kopeks // 100
+        for key, (_n, _d, _s, _ss, kopeks, _rs) in _cfg.PLANS.items()
+    }
+
+
 def _page_context(request):
     """Общие переменные для всех рендеров — реквизиты ИП, контакты, футер."""
     return {
@@ -402,6 +412,7 @@ async def index(request: Request, uid: str = "", sig: str = ""):
         {"name": name, "price": rub_kopeks // 100}
         for name, _days, _stars, _stars_str, rub_kopeks, _rub_str in _cfg.PLANS.values()
     ]
+    home_faq = seo.home_faq(_plan_prices(), TRIAL_HOURS)
     return templates.TemplateResponse("index.html", {
         **_page_context(request),
         "downloads": APP_DOWNLOADS,
@@ -409,8 +420,8 @@ async def index(request: Request, uid: str = "", sig: str = ""):
         "active_token": active_token,
         "link_uid": link_uid,
         "link_sig": sig if link_uid else "",
-        "home_faq": seo.HOME_FAQ,
-        "home_jsonld": seo.home_jsonld(SITE_URL, plans),
+        "home_faq": home_faq,
+        "home_jsonld": seo.home_jsonld(SITE_URL, plans, home_faq),
     })
 
 
@@ -1627,7 +1638,8 @@ async def llms_txt():
     """Выжимка фактов о сервисе для ИИ-ассистентов: цены, платформы, правила
     маршрутизации. Чтобы в ответах ИИ не было выдумок про нас."""
     return PlainTextResponse(
-        seo.llms_txt(SITE_URL, BOT_USERNAME, SUPPORT_EMAIL),
+        seo.llms_txt(SITE_URL, BOT_USERNAME, SUPPORT_EMAIL,
+                     _plan_prices(), TRIAL_HOURS),
         media_type="text/markdown; charset=utf-8",
     )
 
