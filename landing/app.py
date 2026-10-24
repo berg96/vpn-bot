@@ -11,12 +11,14 @@ from datetime import datetime, timezone, timedelta
 
 import aiohttp
 from fastapi import FastAPI, Request, Form, HTTPException
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import (HTMLResponse, PlainTextResponse, RedirectResponse,
+                               Response)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.routing import Match
 
 import db
 import panel
@@ -200,15 +202,16 @@ _ALLOWED_METHODS = {"GET", "POST", "HEAD"}
 
 
 def _trailing_slash_target(request: Request) -> str | None:
-    """Адрес без хвостового слэша, если он нужен: только для GET/HEAD и не для
-    статики. Иначе None."""
-    path = request.url.path
-    if request.method not in ("GET", "HEAD"):
+    """Полный адрес без хвостового слэша, если такой маршрут есть. Иначе None:
+    на несуществующие пути отдаём 404 сразу, без лишнего постоянного редиректа."""
+    path = seo.trailing_slash_path(request.method, request.url.path)
+    if path is None:
         return None
-    if len(path) < 2 or not path.endswith("/") or path.startswith("/static/"):
+    probe = {"type": "http", "path": path, "method": request.method,
+             "headers": [], "query_string": b"", "root_path": ""}
+    if not any(route.matches(probe)[0] == Match.FULL for route in app.routes):
         return None
-    target = path.rstrip("/") or "/"
-    return f"{target}?{request.url.query}" if request.url.query else target
+    return str(request.url.replace(path=path))
 
 
 @app.middleware("http")
@@ -412,7 +415,7 @@ async def index(request: Request, uid: str = "", sig: str = ""):
         {"name": name, "price": rub_kopeks // 100}
         for name, _days, _stars, _stars_str, rub_kopeks, _rub_str in _cfg.PLANS.values()
     ]
-    home_faq = seo.home_faq(_plan_prices(), TRIAL_HOURS)
+    home_faq = seo.home_faq(_plan_prices(), TRIAL_HOURS, TRIAL_DATA_MB)
     return templates.TemplateResponse("index.html", {
         **_page_context(request),
         "downloads": APP_DOWNLOADS,
@@ -451,6 +454,7 @@ async def create_trial(
             "already-tried.html",
             {
                 **_page_context(request),
+                "turnstile_site_key": "",
                 "message": "Не удалось подтвердить, что ты не бот. Обнови страницу и попробуй снова.",
             },
             status_code=403,
@@ -463,6 +467,7 @@ async def create_trial(
             "already-tried.html",
             {
                 **_page_context(request),
+                "turnstile_site_key": "",
                 "message": reason,
             },
             status_code=status,
@@ -1564,6 +1569,7 @@ async def _send_activation_alert(
 async def pay_success(request: Request):
     return templates.TemplateResponse("pay-result.html", {
         **_page_context(request),
+        "turnstile_site_key": "",
         "success": True,
         "heading": "✅ Оплата прошла",
         "message": "Подписка активирована. Возвращайся в бота — там ссылка для подключения и все инструкции.",
@@ -1575,6 +1581,7 @@ async def pay_success(request: Request):
 async def pay_fail(request: Request):
     return templates.TemplateResponse("pay-result.html", {
         **_page_context(request),
+        "turnstile_site_key": "",
         "success": False,
         "heading": "❌ Оплата не прошла",
         "message": "Карта отклонена или что-то пошло не так. Попробуй ещё раз через бота или напиши в поддержку.",
@@ -1629,7 +1636,6 @@ async def robots_txt():
 
 @app.api_route("/sitemap.xml", methods=["GET", "HEAD"], include_in_schema=False)
 async def sitemap_xml():
-    from fastapi.responses import Response
     return Response(seo.sitemap_xml(SITE_URL), media_type="application/xml")
 
 
@@ -1639,7 +1645,7 @@ async def llms_txt():
     маршрутизации. Чтобы в ответах ИИ не было выдумок про нас."""
     return PlainTextResponse(
         seo.llms_txt(SITE_URL, BOT_USERNAME, SUPPORT_EMAIL,
-                     _plan_prices(), TRIAL_HOURS),
+                     _plan_prices(), TRIAL_HOURS, TRIAL_DATA_MB),
         media_type="text/markdown; charset=utf-8",
     )
 

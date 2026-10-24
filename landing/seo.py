@@ -1,5 +1,4 @@
-"""robots.txt, sitemap.xml и llms.txt генерируются из SITE_URL и mtime шаблонов,
-чтобы при смене домена и правке страниц не разъезжались с реальностью."""
+"""robots.txt, sitemap.xml, llms.txt и канонизация адресов для лендинга."""
 
 import os
 from datetime import datetime, timezone
@@ -16,8 +15,8 @@ PAGES = [
     ("/security", "security.html", "yearly", "0.3"),
 ]
 
-# ИИ-краулеры перечислены явно: дефолтный «Allow: /» их и так пускает, но при
-# любой будущей правке robots видно, что доступ для них осознанный.
+# ИИ-краулеры перечислены явно: дефолтный Allow их и так пускает, но при любой
+# будущей правке robots видно, что доступ для них осознанный.
 _AI_BOTS = [
     "GPTBot", "OAI-SearchBot", "ChatGPT-User",
     "ClaudeBot", "Claude-SearchBot", "Claude-User",
@@ -29,12 +28,39 @@ _PRIVATE = ["/sub/", "/open/", "/s/", "/i/", "/api/", "/pay", "/trial"]
 
 
 def page_lastmod(tpl: str) -> str:
-    path = os.path.join(_TPL_DIR, tpl)
-    try:
-        ts = os.path.getmtime(path)
-    except OSError:
-        ts = datetime.now(timezone.utc).timestamp()
+    paths = [os.path.join(_TPL_DIR, tpl)]
+    if tpl == "index.html":
+        # видимый FAQ главной лежит в этом модуле, правка текстов меняет страницу
+        paths.append(os.path.abspath(__file__))
+    stamps = []
+    for path in paths:
+        try:
+            stamps.append(os.path.getmtime(path))
+        except OSError:
+            pass
+    ts = max(stamps) if stamps else datetime.now(timezone.utc).timestamp()
     return datetime.fromtimestamp(ts, timezone.utc).strftime("%Y-%m-%d")
+
+
+def trailing_slash_path(method: str, path: str) -> str | None:
+    """Канонический путь без хвостового слэша или None, если редирект не нужен.
+    Пути вида //host отбрасываем: Location с них уводит на чужой сайт."""
+    if method not in ("GET", "HEAD"):
+        return None
+    if len(path) < 2 or not path.endswith("/") or path.startswith("/static/"):
+        return None
+    if path.startswith("//") or "\\" in path:
+        return None
+    target = path.rstrip("/") or "/"
+    return None if target.startswith("//") else target
+
+
+def _hours_word(hours: int) -> str:
+    if hours % 10 == 1 and hours % 100 != 11:
+        return "час"
+    if hours % 10 in (2, 3, 4) and hours % 100 not in (12, 13, 14):
+        return "часа"
+    return "часов"
 
 
 def robots_txt(site_url: str) -> str:
@@ -100,9 +126,9 @@ _HOME_FAQ = [
     (
         "Сколько стоит и можно ли проверить бесплатно?",
         "Месяц стоит {m} ₽, три месяца {q} ₽, год {y} ₽, то есть {pm} ₽ в месяц. "
-        "Трафик в любом тарифе без лимита. Проверить можно бесплатно: {h} часа "
-        "прямо с сайта без регистрации и карты, плюс 7 дней и 5 ГБ через "
-        "Telegram-бота.",
+        "В платных тарифах трафик без лимита. Проверить можно бесплатно: {h} {hw} "
+        "и {mb} МБ прямо с сайта без регистрации и карты, плюс 7 дней и 5 ГБ "
+        "через Telegram-бота.",
     ),
     (
         "Что вы храните о подключениях?",
@@ -121,20 +147,21 @@ _HOME_FAQ = [
 ]
 
 
-def home_faq(prices: dict[str, int], trial_hours: int) -> list[tuple[str, str]]:
-    """Вопросы с подставленными ценами и часами пробного периода."""
+def home_faq(prices: dict[str, int], trial_hours: int,
+             trial_mb: int) -> list[tuple[str, str]]:
+    """Вопросы с ценами и условиями пробного из конфига."""
     values = {
         "m": prices["1m"], "q": prices["3m"], "y": prices["1y"],
         "pm": round(prices["1y"] / 12), "h": trial_hours,
+        "hw": _hours_word(trial_hours), "mb": trial_mb,
     }
     return [(q, a.format(**values)) for q, a in _HOME_FAQ]
 
 
 def home_jsonld(site_url: str, plans: list[dict],
                 faq: list[tuple[str, str]]) -> dict:
-    """Разметка главной: сайт, приложение с тарифами и FAQ одним @graph,
-    чтобы сущности ссылались друг на друга, а не дублировались. faq тот же
-    список, что рендерится в видимый блок."""
+    """Сайт, приложение с тарифами и FAQ одним @graph; faq тот же список,
+    что рендерится в видимый блок."""
     offers = [{
         "@type": "Offer",
         "name": p["name"],
@@ -199,7 +226,7 @@ def home_jsonld(site_url: str, plans: list[dict],
 
 
 def llms_txt(site_url: str, bot_username: str, support_email: str,
-             prices: dict[str, int], trial_hours: int) -> str:
+             prices: dict[str, int], trial_hours: int, trial_mb: int) -> str:
     return f"""# RadarShield
 
 > Сервис умной маршрутизации интернет-трафика для России: подключение остаётся
@@ -214,10 +241,10 @@ def llms_txt(site_url: str, bot_username: str, support_email: str,
 - Российские ресурсы (Яндекс, VK, Сбер, Ozon, Госуслуги и другие) идут напрямую,
   мимо туннеля, по встроенным в профиль правилам маршрутизации.
 - Содержимое трафика не хранится, логи только технические.
-- Тарифы: {prices["1m"]} ₽ за месяц, {prices["3m"]} ₽ за 3 месяца,
-  {prices["1y"]} ₽ за год ({round(prices["1y"] / 12)} ₽/мес).
-- Бесплатно: {trial_hours} часа с сайта без регистрации и карты; 7 дней и 5 ГБ
-  через Telegram-бота.
+- Тарифы: {prices['1m']} ₽ за месяц, {prices['3m']} ₽ за 3 месяца,
+  {prices['1y']} ₽ за год ({round(prices['1y'] / 12)} ₽/мес), трафик без лимита.
+- Бесплатно: {trial_hours} {_hours_word(trial_hours)} и {trial_mb} МБ с сайта без
+  регистрации и карты; 7 дней и 5 ГБ через Telegram-бота.
 - Оплата: банковская карта, СБП, СберPay, T-Pay (через Robokassa), Telegram Stars.
 - Возврат: в первые 24 часа полностью, если подписка не использовалась, позже
   за неиспользованные дни.
