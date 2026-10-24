@@ -8,7 +8,7 @@
 <meta name="description" content="{{ description|default('RadarShield — VPN для России, который продолжает работать, когда другие блокируют: два протокола и 12 серверов в 4 странах. Российские сайты и банки идут напрямую, скорость не падает. 3 часа бесплатно, без регистрации и карты.') }}">
 {% endblock %}
 <title>{% block title %}RadarShield — умная маршрутизация интернет-трафика{% endblock %}</title>
-<link rel="canonical" href="https://radarshield.mooo.com{{ request.url.path }}">
+<link rel="canonical" href="{{ site_url }}{{ request.url.path }}">
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <link rel="icon" type="image/png" sizes="64x64" href="/static/icon-64.png">
 <link rel="icon" type="image/png" sizes="128x128" href="/static/icon-128.png">
@@ -16,12 +16,48 @@
 
 {% block og %}
 <meta property="og:type" content="website">
-<meta property="og:url" content="https://radarshield.mooo.com/">
-<meta property="og:title" content="RadarShield — VPN для России, который не перестаёт работать">
-<meta property="og:description" content="VPN для России, который продолжает работать, когда другие блокируют: два протокола и 12 серверов в 4 странах. Российские сайты и банки — напрямую. 3 часа бесплатно без регистрации, 7 дней и 5 ГБ через Telegram.">
-<meta property="og:image" content="https://radarshield.mooo.com/static/og-image.svg">
+<meta property="og:site_name" content="RadarShield">
+<meta property="og:url" content="{{ site_url }}{{ request.url.path }}">
+<meta property="og:title" content="{{ og_title|default('RadarShield — VPN для России, который не перестаёт работать') }}">
+<meta property="og:description" content="{{ description|default('VPN для России, который продолжает работать, когда другие блокируют: два протокола и 12 серверов в 4 странах. Российские сайты и банки — напрямую. 3 часа бесплатно без регистрации, 7 дней и 5 ГБ через Telegram.') }}">
+<!-- PNG, а не SVG: Telegram, VK и соцсети SVG-превью не рисуют. -->
+<meta property="og:image" content="{{ site_url }}/static/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="RadarShield: умный доступ к интернет-ресурсам">
 <meta property="og:locale" content="ru_RU">
+<meta name="twitter:card" content="summary_large_image">
 {% endblock %}
+
+{% if site_url %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "@id": "{{ site_url }}/#org",
+  "name": "RadarShield",
+  "url": "{{ site_url }}/",
+  "logo": {
+    "@type": "ImageObject",
+    "url": "{{ site_url }}/static/logo-512.png",
+    "width": 512,
+    "height": 512
+  },
+  "legalName": {{ ip_full_name|tojson }},
+  {% if ip_inn %}"taxID": {{ ip_inn|tojson }},{% endif %}
+  {% if ip_ogrnip %}"identifier": [{"@type": "PropertyValue", "name": "ОГРНИП", "value": {{ ip_ogrnip|tojson }}}],{% endif %}
+  {% if ip_address %}"address": {"@type": "PostalAddress", "addressCountry": "RU", "streetAddress": {{ ip_address|tojson }}},{% endif %}
+  "sameAs": ["https://t.me/{{ bot_username }}"],
+  "contactPoint": [{
+    "@type": "ContactPoint",
+    "contactType": "customer support",
+    "email": {{ support_email|tojson }},
+    {% if support_phone %}"telephone": {{ support_phone|tojson }},{% endif %}
+    "availableLanguage": ["ru"]
+  }]
+}
+</script>
+{% endif %}
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -160,6 +196,7 @@ function resetTurnstile() {
           <li><a href="/#how">Как работает</a></li>
           <li><a href="/guide">Инструкция</a></li>
           <li><a href="/#pricing">Тарифы</a></li>
+          <li><a href="/#faq">Частые вопросы</a></li>
           <li><a href="/pay">Оплатить подписку</a></li>
         </ul>
       </div>
