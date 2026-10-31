@@ -1,11 +1,16 @@
 {% extends "_base.html" %}
 {% block title %}Как настроить VPN на Android, iPhone, Windows и Mac — инструкция{% endblock %}
-{% block meta %}<meta name="description" content="Пошаговая настройка VPN: FLClash на Android и Windows, Karing на iPhone, iPad и Mac. Импорт ссылки подписки, режимы маршрутизации и что делать, если приложение не открывается на macOS.">{% endblock %}
+{% set description = "Пошаговая настройка VPN: FLClash на Android и Windows, Karing на iPhone, iPad и Mac. Импорт ссылки подписки, режимы маршрутизации и что делать, если приложение не открывается на macOS." %}
+{% set og_title = "Как подключить RadarShield: Android, iPhone, iPad, Windows, macOS" %}
+
 
 {% block body %}
 <section class="hero compact">
   <div class="hero-bg"></div>
   <div class="container" style="text-align:center;position:relative;z-index:2">
+    <nav aria-label="Навигация" style="font-size:14px;color:var(--ink-mute);margin-bottom:12px">
+      <a href="/" style="color:inherit">Главная</a> · Инструкция
+    </nav>
     <h1>📖 Как подключить RadarShield</h1>
     <p class="sub">Выбери свою платформу — инструкция откроется ниже.</p>
   </div>
@@ -355,6 +360,30 @@
 {% endblock %}
 
 {% block head_extra %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "TechArticle",
+      "@id": "{{ site_url }}/guide#article",
+      "headline": "Как подключить RadarShield на Android, iPhone, iPad, Windows и macOS",
+      "url": "{{ site_url }}/guide",
+      "inLanguage": "ru-RU",
+      {% if page_updated %}"dateModified": "{{ page_updated }}",{% endif %}
+      "publisher": {"@id": "{{ site_url }}/#org"},
+      "about": {"@id": "{{ site_url }}/#app"}
+    },
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "Главная", "item": "{{ site_url }}/"},
+        {"@type": "ListItem", "position": 2, "name": "Инструкция", "item": "{{ site_url }}/guide"}
+      ]
+    }
+  ]
+}
+</script>
 <style>
 .guide-faq .faq-item {
   border: 1px solid var(--border);

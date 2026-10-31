@@ -2,17 +2,9 @@
 {% block title %}RadarShield — VPN для России: работает, когда другие блокируют{% endblock %}
 
 {% block head_extra %}
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "SoftwareApplication",
-  "name": "RadarShield",
-  "operatingSystem": "Android, iOS, Windows, macOS",
-  "applicationCategory": "UtilitiesApplication",
-  "description": "VPN для России с двумя протоколами и 12 серверами в 4 странах: продолжает работать, когда другие блокируют. Российские сайты и банки идут напрямую, скорость на них не падает.",
-  "offers": {"@type": "Offer", "price": "0", "priceCurrency": "RUB"}
-}
-</script>
+<!-- Сайт, приложение с тарифами и FAQ собираются в landing/seo.py, тарифы
+     берутся из config.PLANS, вопросы из того же списка, что видимый блок. -->
+<script type="application/ld+json">{{ home_jsonld|tojson }}</script>
 {% endblock %}
 
 {% block body %}
@@ -302,6 +294,26 @@
         <p>Чего не хватает, что раздражает, что стоит добавить — сервис растёт ровно из таких сообщений. Отвечаем на каждое.</p>
       </div>
     </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section id="faq">
+  <div class="container">
+    <div class="section-head">
+      <div><div class="section-tag">Частые вопросы</div><h2>Коротко о главном.</h2></div>
+    </div>
+    <div class="features">
+      {% for question, answer in home_faq %}
+      <div class="feat">
+        <h3>{{ question }}</h3>
+        <p>{{ answer }}</p>
+      </div>
+      {% endfor %}
+    </div>
+    <p style="color:var(--ink-dim);font-size:15px;margin-top:22px">
+      Остальное есть в <a href="/guide">инструкции</a> или у <a href="https://t.me/{{ support_username }}" target="_blank" rel="noopener">поддержки</a>.
+    </p>
   </div>
 </section>
 

@@ -11,18 +11,21 @@ from datetime import datetime, timezone, timedelta
 
 import aiohttp
 from fastapi import FastAPI, Request, Form, HTTPException
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import (HTMLResponse, PlainTextResponse, RedirectResponse,
+                               Response)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.routing import Match
 
 import db
 import panel
 import referral
 import robokassa
 import sub_tokens
+from landing import seo
 
 # Отдельный TG-client для уведомлений юзера после успешной RUB-оплаты.
 # Т-Банк webhook прилетает на лендинг, а не на бота — нужен свой Bot instance.
@@ -86,9 +89,20 @@ SUPPORT_PHONE = os.environ.get("SUPPORT_PHONE", "")
 DOCS_UPDATED_AT = os.environ.get("DOCS_UPDATED_AT", "23 апреля 2026 г.")
 # Канонический адрес сайта и ссылок подписки/оплаты. Старый mooo.com держим
 # живым на nginx для уже вставленных профилей; новые выдачи только с SITE_URL.
+# Отсюда же canonical, og:url, sitemap и llms.txt.
 SITE_URL = os.environ.get("SITE_URL", "https://radarshield.net").rstrip("/")
 SITE_HOST = SITE_URL.removeprefix("https://").removeprefix("http://").split("/")[0]
 LEGACY_SITE_HOST = "radarshield.mooo.com"
+
+
+def _plan_prices() -> dict[str, int]:
+    """Цены тарифов в рублях из config.PLANS: тексты FAQ и llms.txt берут их
+    оттуда же, что и страница оплаты."""
+    import config as _cfg
+    return {
+        key: kopeks // 100
+        for key, (_n, _d, _s, _ss, kopeks, _rs) in _cfg.PLANS.items()
+    }
 
 
 def _page_context(request):
@@ -190,6 +204,19 @@ async def _rate_limit_handler(request: Request, exc: RateLimitExceeded):
 _ALLOWED_METHODS = {"GET", "POST", "HEAD"}
 
 
+def _trailing_slash_target(request: Request) -> str | None:
+    """Полный адрес без хвостового слэша, если такой маршрут есть. Иначе None:
+    на несуществующие пути отдаём 404 сразу, без лишнего постоянного редиректа."""
+    path = seo.trailing_slash_path(request.method, request.url.path)
+    if path is None:
+        return None
+    probe = {"type": "http", "path": path, "method": request.method,
+             "headers": [], "query_string": b"", "root_path": ""}
+    if not any(route.matches(probe)[0] == Match.FULL for route in app.routes):
+        return None
+    return str(request.url.replace(path=path))
+
+
 @app.middleware("http")
 async def _security_middleware(request: Request, call_next):
     """1) Блокируем экзотические методы (PUT/DELETE/PATCH/OPTIONS/TRACE) на любых
@@ -201,6 +228,10 @@ async def _security_middleware(request: Request, call_next):
         response = await http_exception_handler(
             request, StarletteHTTPException(status_code=405)
         )
+    elif slash_target := _trailing_slash_target(request):
+        # Стандартный redirect_slashes отдаёт 307: для поисковиков это «адрес
+        # со слэшем ещё жив», и он остаётся в индексе. Отдаём 301.
+        response = RedirectResponse(slash_target, status_code=301)
     else:
         response = await call_next(request)
     response.headers["X-Frame-Options"] = "DENY"
@@ -368,7 +399,7 @@ def _sub_summary(u: dict) -> dict:
     }
 
 
-@app.get("/", response_class=HTMLResponse)
+@app.api_route("/", methods=["GET", "HEAD"], response_class=HTMLResponse)
 async def index(request: Request, uid: str = "", sig: str = ""):
     existing_token = request.cookies.get("lp_token")
     active_token = None
@@ -382,6 +413,12 @@ async def index(request: Request, uid: str = "", sig: str = ""):
     # До этого RS_LINK отдавали только /pay и /open/{token}, и кнопка «Открыть
     # сайт» в кампаниях вела на голую главную — привязка не срабатывала.
     link_uid = uid if (uid and sig and _verify_pay_sig(uid, sig)) else ""
+    import config as _cfg
+    plans = [
+        {"name": name, "price": rub_kopeks // 100}
+        for name, _days, _stars, _stars_str, rub_kopeks, _rub_str in _cfg.PLANS.values()
+    ]
+    home_faq = seo.home_faq(_plan_prices(), TRIAL_HOURS, TRIAL_DATA_MB)
     return templates.TemplateResponse("index.html", {
         **_page_context(request),
         "downloads": APP_DOWNLOADS,
@@ -389,6 +426,8 @@ async def index(request: Request, uid: str = "", sig: str = ""):
         "active_token": active_token,
         "link_uid": link_uid,
         "link_sig": sig if link_uid else "",
+        "home_faq": home_faq,
+        "home_jsonld": seo.home_jsonld(SITE_URL, plans, home_faq),
     })
 
 
@@ -417,10 +456,9 @@ async def create_trial(
         return templates.TemplateResponse(
             "already-tried.html",
             {
-                "request": request,
+                **_page_context(request),
+                "turnstile_site_key": "",
                 "message": "Не удалось подтвердить, что ты не бот. Обнови страницу и попробуй снова.",
-                "bot_username": BOT_USERNAME,
-                "support_username": SUPPORT_USERNAME,
             },
             status_code=403,
         )
@@ -431,10 +469,9 @@ async def create_trial(
         return templates.TemplateResponse(
             "already-tried.html",
             {
-                "request": request,
+                **_page_context(request),
+                "turnstile_site_key": "",
                 "message": reason,
-                "bot_username": BOT_USERNAME,
-                "support_username": SUPPORT_USERNAME,
             },
             status_code=status,
         )
@@ -1534,75 +1571,86 @@ async def _send_activation_alert(
 @app.get("/pay/success", response_class=HTMLResponse)
 async def pay_success(request: Request):
     return templates.TemplateResponse("pay-result.html", {
-        "request": request,
+        **_page_context(request),
+        "turnstile_site_key": "",
         "success": True,
         "heading": "✅ Оплата прошла",
         "message": "Подписка активирована. Возвращайся в бота — там ссылка для подключения и все инструкции.",
         "title": "Оплата прошла",
-        "bot_username": BOT_USERNAME,
-        "support_username": SUPPORT_USERNAME,
     })
 
 
 @app.get("/pay/fail", response_class=HTMLResponse)
 async def pay_fail(request: Request):
     return templates.TemplateResponse("pay-result.html", {
-        "request": request,
+        **_page_context(request),
+        "turnstile_site_key": "",
         "success": False,
         "heading": "❌ Оплата не прошла",
         "message": "Карта отклонена или что-то пошло не так. Попробуй ещё раз через бота или напиши в поддержку.",
         "title": "Оплата не прошла",
-        "bot_username": BOT_USERNAME,
-        "support_username": SUPPORT_USERNAME,
     })
 
 
-@app.get("/offer", response_class=HTMLResponse)
+@app.api_route("/offer", methods=["GET", "HEAD"], response_class=HTMLResponse)
 async def doc_offer(request: Request):
     return templates.TemplateResponse("offer.html", {
         **_doc_context(request),
         "title": "Публичная оферта",
+        "description": "Публичная оферта RadarShield: предмет договора, тарифы и порядок оплаты, права и обязанности сторон, реквизиты исполнителя.",
         "heading": "Публичная оферта (договор)",
     })
 
 
-@app.get("/privacy", response_class=HTMLResponse)
+@app.api_route("/privacy", methods=["GET", "HEAD"], response_class=HTMLResponse)
 async def doc_privacy(request: Request):
     return templates.TemplateResponse("privacy.html", {
         **_doc_context(request),
         "title": "Политика конфиденциальности",
+        "description": "Какие данные собирает RadarShield, зачем они нужны, сколько хранятся и что мы не логируем: содержимое трафика и историю посещений.",
         "heading": "Политика конфиденциальности",
     })
 
 
-@app.get("/refund", response_class=HTMLResponse)
+@app.api_route("/refund", methods=["GET", "HEAD"], response_class=HTMLResponse)
 async def doc_refund(request: Request):
     return templates.TemplateResponse("refund.html", {
         **_doc_context(request),
         "title": "Условия возврата",
+        "description": "Как вернуть деньги за подписку RadarShield: полный возврат в первые 24 часа без использования, позже за неиспользованные дни. Сроки и порядок заявки.",
         "heading": "Условия возврата и отмены",
     })
 
 
-@app.get("/security", response_class=HTMLResponse)
+@app.api_route("/security", methods=["GET", "HEAD"], response_class=HTMLResponse)
 async def doc_security(request: Request):
     return templates.TemplateResponse("security.html", {
         **_doc_context(request),
         "title": "Безопасность данных",
+        "description": "Как устроена защита RadarShield: шифрование соединений, хранение ключей и доступов, что происходит при инциденте.",
         "heading": "Политика информационной безопасности",
     })
 
 
-@app.get("/robots.txt", include_in_schema=False)
+@app.api_route("/robots.txt", methods=["GET", "HEAD"], include_in_schema=False)
 async def robots_txt():
-    from fastapi.responses import FileResponse
-    return FileResponse("landing/static/robots.txt", media_type="text/plain")
+    return PlainTextResponse(seo.robots_txt(SITE_URL))
 
 
-@app.get("/sitemap.xml", include_in_schema=False)
+@app.api_route("/sitemap.xml", methods=["GET", "HEAD"], include_in_schema=False)
 async def sitemap_xml():
-    from fastapi.responses import FileResponse
-    return FileResponse("landing/static/sitemap.xml", media_type="application/xml")
+    return Response(seo.sitemap_xml(SITE_URL), media_type="application/xml")
+
+
+@app.api_route("/llms.txt", methods=["GET", "HEAD"], include_in_schema=False)
+async def llms_txt():
+    """Выжимка фактов о сервисе для ИИ-ассистентов: цены, платформы, правила
+    маршрутизации. Чтобы в ответах ИИ не было выдумок про нас."""
+    return PlainTextResponse(
+        seo.llms_txt(SITE_URL, BOT_USERNAME, SUPPORT_EMAIL,
+                     _plan_prices(), TRIAL_HOURS, TRIAL_DATA_MB),
+        media_type="text/markdown; charset=utf-8",
+    )
 
 
 @app.get("/_h/{secret}", include_in_schema=False)
@@ -1616,9 +1664,10 @@ async def healthz(secret: str):
     return {"ok": True}
 
 
-@app.get("/guide", response_class=HTMLResponse)
+@app.api_route("/guide", methods=["GET", "HEAD"], response_class=HTMLResponse)
 async def guide(request: Request):
     return templates.TemplateResponse("guide.html", {
         **_page_context(request),
         "downloads": APP_DOWNLOADS,
+        "page_updated": seo.page_lastmod("guide.html"),
     })
