@@ -36,12 +36,23 @@ def test_domain_move_campaign_in_runner():
     src = (ROOT / "vpn-campaign.py").read_text(encoding="utf-8")
     assert 'name="domain_move"' in src
     assert "DOMAIN_MOVE" in src
-    assert "актуальные серверы" in src
+    assert "get_reachable_users" in src
+    assert "Мы переехали на radarshield.net" in src
+    assert "Сайт RadarShield теперь на radarshield.net" in src
+    assert "красная кнопка справа на карточке" in src
     assert "Удалите" in src
-    assert "_install_url" in src
+    assert "_domain_move_has_sub" in src
+    assert "_domain_move_buttons" in src
     assert "Открыть в приложении" in src
-    assert "синхронизация" in src
+    assert "mooo.com" not in _domain_move_user_facing_snippets(src)
     assert 'SITE_URL", "https://radarshield.net"' in src
+
+
+def _domain_move_user_facing_snippets(src: str) -> str:
+    """Только тексты рассылки domain_move, без комментариев про legacy mooo."""
+    start = src.index("_DOMAIN_MOVE_HOWTO")
+    end = src.index("DOMAIN_MOVE = campaigns.Campaign")
+    return src[start:end]
 
 
 def test_dynamic_seo_defaults_to_net():

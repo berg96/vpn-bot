@@ -8,6 +8,7 @@
   python3 /root/vpn-campaign.py preview migrate_profile
   python3 /root/vpn-campaign.py send    migrate_profile     # спросит подтверждение
 """
+
 import datetime
 import os
 import subprocess
@@ -32,7 +33,9 @@ import sub_tokens  # noqa: E402
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 BOT_USERNAME = os.environ.get("BOT_USERNAME", "radarshield_bot")
 LANDING_BASE_URL = os.environ.get("SITE_URL", "https://radarshield.net").rstrip("/")
-SITE_HOST = LANDING_BASE_URL.removeprefix("https://").removeprefix("http://").split("/")[0]
+SITE_HOST = (
+    LANDING_BASE_URL.removeprefix("https://").removeprefix("http://").split("/")[0]
+)
 
 
 def _sub_url(tg_id: int) -> str:
@@ -46,7 +49,8 @@ def _install_url(tg_id: int) -> str:
 def _age_days(iso_ts: str) -> float:
     """Сколько дней прошло с ISO-метки БД (`first_seen`, tz-aware с микросекундами)."""
     return (
-        datetime.datetime.now(datetime.timezone.utc) - datetime.datetime.fromisoformat(iso_ts)
+        datetime.datetime.now(datetime.timezone.utc)
+        - datetime.datetime.fromisoformat(iso_ts)
     ).total_seconds() / 86400
 
 
@@ -111,19 +115,24 @@ def marzban_still_online(days: int = 2) -> set[str]:
     """Кто ещё коннектится в старый Marzban. НЕ пусто → гасить панель НЕЛЬЗЯ."""
     sql = f"SELECT username FROM users WHERE online_at >= NOW() - INTERVAL {days} DAY;"
     out = subprocess.run(
-        ["docker", "exec", "marzban-db-1", "sh", "-c",
-         f'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -N -e "USE marzban; {sql}"'],
-        capture_output=True, text=True, timeout=30,
+        [
+            "docker",
+            "exec",
+            "marzban-db-1",
+            "sh",
+            "-c",
+            f'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -N -e "USE marzban; {sql}"',
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
     )
     return {ln.strip() for ln in out.stdout.splitlines() if ln.strip()}
 
 
 def migrate_profile_recipients() -> list[dict]:
     active = _panel_active_usernames()
-    return [
-        u for u in db.get_reachable_users()
-        if u.get("mz_username") in active
-    ]
+    return [u for u in db.get_reachable_users() if u.get("mz_username") in active]
 
 
 # Инструкция по обновлению профиля — общая для migrate_profile и legacy_profile.
@@ -189,9 +198,17 @@ def marzban_recent_traffic(days: int = 3, min_mb: int = 100) -> set[str]:
         f"GROUP BY u.username HAVING SUM(nu.used_traffic) > {min_mb * 1024 * 1024};"
     )
     out = subprocess.run(
-        ["docker", "exec", "marzban-db-1", "sh", "-c",
-         f'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -N -e "USE marzban; {sql}"'],
-        capture_output=True, text=True, timeout=30,
+        [
+            "docker",
+            "exec",
+            "marzban-db-1",
+            "sh",
+            "-c",
+            f'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -N -e "USE marzban; {sql}"',
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
     )
     return {ln.strip() for ln in out.stdout.splitlines() if ln.strip()}
 
@@ -221,7 +238,12 @@ LEGACY_PROFILE = campaigns.Campaign(
     # Кнопки deep-link нет по той же причине, что и в migrate_profile: она добавляет
     # ВТОРОЙ профиль вместо обновления существующего (проверено 14.07).
     buttons=lambda u: [
-        [{"text": "🆘 Написать в поддержку", "url": "https://t.me/radarshield_support_bot"}],
+        [
+            {
+                "text": "🆘 Написать в поддержку",
+                "url": "https://t.me/radarshield_support_bot",
+            }
+        ],
     ],
     # Одно касание на человека за всё время (решение Артёма 18.07): повторять просьбу
     # обновиться — назойливо. Кто не среагировал — к нему идём лично, а не рассылкой.
@@ -232,51 +254,72 @@ LEGACY_PROFILE = campaigns.Campaign(
 )
 
 # ── Кампания: переезд на radarshield.net ──────────────────────────────────────
-# Старый FreeDNS-домен (mooo.com) у части РФ-провайдеров (в т.ч. Ростелеком)
-# перестал открываться: TCP до IP мастера режется, автообновление профиля молчит.
-# Новый домен за Cloudflare proxy. «Синхронизация» по старой ссылке не поможет —
-# нужна новая ссылка и замена профиля.
+# Старый FreeDNS-домен у части РФ-провайдеров перестал открываться: TCP до IP
+# мастера режется, автообновление профиля молчит. Новый домен за Cloudflare.
+# «Синхронизация» по старой ссылке не поможет - нужна замена профиля.
 #
-# Аудитория: все с активной подпиской в боевой панели (как migrate_profile).
-# Транзакционная, once: без замены ссылки часть клиентов останется на мёртвом URL.
+# Аудитория: все reachable (не только active). Два текста в одной кампании:
+# с mz_username - ссылка + howto; без - коротко про новый сайт, без мёртвой ссылки.
+# Транзакционная, once. В автопилот не входит - только разовый autosend по cron.
 
 _DOMAIN_MOVE_HOWTO = (
-    "<b>Как сделать на каждом устройстве:</b>\n"
+    "Для того чтобы обновления продолжали успешно приходить, "
+    "нужно сделать на каждом устройстве:\n"
     "1. Откройте приложение (FlClash / Karing / RadarShield).\n"
     "2. <b>Удалите</b> старый профиль RadarShield "
     "(FlClash: «Профили» → ⋮ → удалить; "
-    "Karing: «Профили» → свайп или меню карточки → удалить).\n"
-    "3. <b>Добавьте новый</b> одним из способов:\n"
-    "   • кнопка «📲 Открыть в приложении» ниже; или\n"
-    "   • вставьте ссылку из этого сообщения "
-    "(FlClash: «Профили» → «+»; Karing: добавить по ссылке).\n\n"
-    "⚠️ Сначала удалите старый профиль: кнопка добавляет новый, "
-    "а старый сама не убирает. Если оставить оба, приложение может "
-    "остаться на устаревшем.\n\n"
-    "Только «синхронизация» на старом профиле не подтянет актуальный список "
-    "серверов - нужна именно замена профиля."
+    "Karing: «Профили» → красная кнопка справа на карточке).\n"
+    "3. <b>Добавьте новый</b>: кнопка «📲 Открыть в приложении» ниже "
+    "или вставьте ссылку из сообщения.\n\n"
+    "⚠️ Сначала удалите старый: кнопка добавляет новый и сама старый не убирает. "
+    "Если оставить оба, приложение может остаться на устаревшем."
 )
 
 
 def domain_move_recipients() -> list[dict]:
-    return migrate_profile_recipients()
+    return db.get_reachable_users()
+
+
+def _domain_move_has_sub(user: dict) -> bool:
+    return bool(user.get("mz_username"))
 
 
 def _domain_move_text(user: dict) -> str:
+    if not _domain_move_has_sub(user):
+        return (
+            "ℹ️ <b>Сайт RadarShield теперь на radarshield.net</b>\n\n"
+            f"Мы переехали на новый адрес. Бот тот же: @{BOT_USERNAME}.\n\n"
+            "Если решите подключить VPN - зайдите в бота (/start) или на сайт, "
+            "там будет актуальная ссылка.\n\n"
+            "Команда RadarShield"
+        )
     sub = _sub_url(user["tg_id"])
     return (
-        "🔄 <b>Обновите профиль, чтобы получать актуальные серверы</b>\n\n"
-        "Мы обновили адрес подписки. Чтобы в приложении всегда был свежий "
-        "список серверов и рабочие обновления, один раз удалите старый "
-        "профиль RadarShield и добавьте новый по ссылке ниже.\n\n"
-        "Дальше всё снова будет подтягиваться само. "
-        f"Новый адрес сайта: {SITE_HOST}.\n\n"
-        f"🔗 Ваша ссылка:\n<code>{sub}</code>\n\n"
+        "🔄 <b>Мы переехали на radarshield.net</b>\n\n"
         f"{_DOMAIN_MOVE_HOWTO}\n\n"
-        "Ту же ссылку всегда можно взять командой /profile.\n\n"
+        f"🔗 Ваша ссылка:\n<code>{sub}</code>\n\n"
         "Если не получится за пару минут - напишите в поддержку, поможем.\n\n"
         "Команда RadarShield"
     )
+
+
+def _domain_move_buttons(user: dict) -> list[list[dict]]:
+    if not _domain_move_has_sub(user):
+        return [
+            [{"text": "🆘 Поддержка", "url": "https://t.me/radarshield_support_bot"}],
+        ]
+    # /open/ добавляет второй профиль и не удаляет старый (проверено 14.07) —
+    # в тексте сначала «удалите», кнопка только как шаг 3.
+    return [
+        [{"text": "📲 Открыть в приложении", "url": _install_url(user["tg_id"])}],
+        [
+            {
+                "text": "🔑 Моя подписка",
+                "url": f"https://t.me/{BOT_USERNAME}?start=profile",
+            }
+        ],
+        [{"text": "🆘 Поддержка", "url": "https://t.me/radarshield_support_bot"}],
+    ]
 
 
 DOMAIN_MOVE = campaigns.Campaign(
@@ -284,13 +327,7 @@ DOMAIN_MOVE = campaigns.Campaign(
     kind="transactional",
     recipients=domain_move_recipients,
     text=_domain_move_text,
-    # /open/ добавляет второй профиль и не удаляет старый (проверено 14.07) —
-    # поэтому в тексте сначала «удалите», кнопка только как шаг 3.
-    buttons=lambda u: [
-        [{"text": "📲 Открыть в приложении", "url": _install_url(u["tg_id"])}],
-        [{"text": "🔑 Моя подписка", "url": f"https://t.me/{BOT_USERNAME}?start=profile"}],
-        [{"text": "🆘 Поддержка", "url": "https://t.me/radarshield_support_bot"}],
-    ],
+    buttons=_domain_move_buttons,
     once=True,
 )
 
@@ -313,10 +350,10 @@ DOMAIN_MOVE = campaigns.Campaign(
 #
 # Маркетинговые: под 30-дневный кап и с кнопкой «Реже писать».
 
-WINBACK_BONUS_DAYS = 3           # win-back #1 — 3 дня
-WINBACK_SECOND_BONUS_DAYS = 7    # win-back #2 — эскалация: 7 дней (труднее вернуть)
-WINBACK_FIRST_AFTER_DAYS = 30    # #1 — через 30 дней после истечения подписки
-WINBACK_SECOND_AFTER_DAYS = 63   # #2 — через 63 дня (3 дня триала #1 + 60) ПОСЛЕ #1
+WINBACK_BONUS_DAYS = 3  # win-back #1 — 3 дня
+WINBACK_SECOND_BONUS_DAYS = 7  # win-back #2 — эскалация: 7 дней (труднее вернуть)
+WINBACK_FIRST_AFTER_DAYS = 30  # #1 — через 30 дней после истечения подписки
+WINBACK_SECOND_AFTER_DAYS = 63  # #2 — через 63 дня (3 дня триала #1 + 60) ПОСЛЕ #1
 
 
 def _inactive_in_panel(u: dict, panel: dict) -> dict | None:
@@ -463,13 +500,12 @@ WIN_BACK_90 = campaigns.Campaign(
 def _site_link(tg_id: int) -> str:
     """Персональная ссылка на главную: даёт лендингу подписанный uid, чтобы браузер
     тихо привязался к аккаунту (link.js) и чат поддержки на сайте узнал человека."""
-    return (f"{LANDING_BASE_URL}/?uid={tg_id}"
-            f"&sig={sub_tokens.make_pay_sig(tg_id)}")
+    return f"{LANDING_BASE_URL}/?uid={tg_id}&sig={sub_tokens.make_pay_sig(tg_id)}"
 
 
-SUPPORT_SITE_FIRST_AFTER_DAYS = 14   # первое касание — D+14 от first_seen
-SUPPORT_SITE_INTERVAL_DAYS = 60      # следующие — не чаще раза в 60 дней
-SUPPORT_SITE_MAX_SENDS = 3           # всего 3 касания за ~полгода, дальше тишина
+SUPPORT_SITE_FIRST_AFTER_DAYS = 14  # первое касание — D+14 от first_seen
+SUPPORT_SITE_INTERVAL_DAYS = 60  # следующие — не чаще раза в 60 дней
+SUPPORT_SITE_MAX_SENDS = 3  # всего 3 касания за ~полгода, дальше тишина
 
 
 def _support_site_recipients() -> list[dict]:
@@ -518,7 +554,9 @@ _SS_ROUTING_ASK = (
 
 
 def _support_site_text(user: dict) -> str:
-    variant = db.notification_count(user["tg_id"], "support_site")  # 0 → A, 1 → B, 2 → C
+    variant = db.notification_count(
+        user["tg_id"], "support_site"
+    )  # 0 → A, 1 → B, 2 → C
     if variant == 0:
         return (
             "📌 <b>Держите под рукой: поддержка и сайт RadarShield</b>\n\n"
@@ -571,7 +609,12 @@ SUPPORT_SITE = campaigns.Campaign(
     # привязывает браузер к аккаунту → чат поддержки на сайте сразу знает, кто пишет.
     # Голая главная привязку не запускала — а текст письма её обещает.
     buttons=lambda u: [
-        [{"text": "🆘 Написать в поддержку", "url": "https://t.me/radarshield_support_bot"}],
+        [
+            {
+                "text": "🆘 Написать в поддержку",
+                "url": "https://t.me/radarshield_support_bot",
+            }
+        ],
         [{"text": "🌐 Открыть сайт", "url": _site_link(u["tg_id"])}],
     ],
     once=False,  # повторяющийся трек: до 3 касаний, интервал держит _recipients
@@ -589,8 +632,8 @@ SUPPORT_SITE = campaigns.Campaign(
 # чтобы не дёргать того, кто просто отложил на завтра. При этом до первого
 # напоминания об истечении (D+4) остаётся зазор — сообщения не столкнутся.
 
-TRIAL_STUCK_AFTER_DAYS = 3   # раньше — не дёргаем: человек мог отложить на вечер
-TRIAL_STUCK_UNTIL_DAYS = 7   # позже триал (7 дней) уже мёртв, текст стал бы враньём
+TRIAL_STUCK_AFTER_DAYS = 3  # раньше — не дёргаем: человек мог отложить на вечер
+TRIAL_STUCK_UNTIL_DAYS = 7  # позже триал (7 дней) уже мёртв, текст стал бы враньём
 
 
 def _trial_stuck_recipients() -> list[dict]:
@@ -620,7 +663,9 @@ def _trial_stuck_recipients() -> list[dict]:
         if not (TRIAL_STUCK_AFTER_DAYS <= age <= TRIAL_STUCK_UNTIL_DAYS):
             continue
         info = panel.get(u.get("mz_username"))
-        if not info or info["traffic"] > 0:  # нет в панели или пользуется — не наш случай
+        if (
+            not info or info["traffic"] > 0
+        ):  # нет в панели или пользуется — не наш случай
             continue
         out.append(u)
     return out
@@ -642,7 +687,12 @@ TRIAL_STUCK = campaigns.Campaign(
     ),
     buttons=lambda u: [
         [{"text": "📲 Подключить", "url": _install_url(u["tg_id"])}],
-        [{"text": "🆘 Помогите настроить", "url": "https://t.me/radarshield_support_bot"}],
+        [
+            {
+                "text": "🆘 Помогите настроить",
+                "url": "https://t.me/radarshield_support_bot",
+            }
+        ],
     ],
     once=True,
 )
@@ -672,17 +722,22 @@ _REF_SHARE_TEXT = (
 def _ref_share_url(tg_id: int) -> str:
     """URL-кнопка «Поделиться»: открывает шаринг Telegram с личной ссылкой юзера
     и готовым текстом для друга."""
-    return ("https://t.me/share/url?url="
-            + urllib.parse.quote(_ref_link(tg_id), safe="")
-            + "&text=" + urllib.parse.quote(_REF_SHARE_TEXT, safe=""))
+    return (
+        "https://t.me/share/url?url="
+        + urllib.parse.quote(_ref_link(tg_id), safe="")
+        + "&text="
+        + urllib.parse.quote(_REF_SHARE_TEXT, safe="")
+    )
 
 
 def _referral_invite_recipients() -> list[dict]:
     """Reachable, кто прожил ≥45 дней с регистрации. once=True + was_notified в
     eligible() отсекут уже получивших."""
     return [
-        u for u in db.get_reachable_users()
-        if u.get("first_seen") and _age_days(u["first_seen"]) >= REFERRAL_INVITE_AFTER_DAYS
+        u
+        for u in db.get_reachable_users()
+        if u.get("first_seen")
+        and _age_days(u["first_seen"]) >= REFERRAL_INVITE_AFTER_DAYS
     ]
 
 
@@ -710,11 +765,19 @@ REFERRAL_INVITE = campaigns.Campaign(
     once=True,
 )
 
-CAMPAIGNS = {c.name: c for c in (
-    MIGRATE_PROFILE, LEGACY_PROFILE, DOMAIN_MOVE,
-    WIN_BACK_30, WIN_BACK_90, SUPPORT_SITE, TRIAL_STUCK,
-    REFERRAL_INVITE,
-)}
+CAMPAIGNS = {
+    c.name: c
+    for c in (
+        MIGRATE_PROFILE,
+        LEGACY_PROFILE,
+        DOMAIN_MOVE,
+        WIN_BACK_30,
+        WIN_BACK_90,
+        SUPPORT_SITE,
+        TRIAL_STUCK,
+        REFERRAL_INVITE,
+    )
+}
 
 # ── Автопилот: ОДНА крон-задача проходит по этому списку ──────────────────────
 # Раньше было три крон-строки в 18:00/18:05/18:10. Разнос по времени ничего не
@@ -752,7 +815,9 @@ def main():
 
     if cmd == "list":
         for name, c in CAMPAIGNS.items():
-            print(f"{name:20} {c.kind:14} получателей сейчас: {len(campaigns.eligible(c))}")
+            print(
+                f"{name:20} {c.kind:14} получателей сейчас: {len(campaigns.eligible(c))}"
+            )
         return 0
 
     if cmd == "legacy-check":
@@ -772,8 +837,13 @@ def main():
     c = CAMPAIGNS[sys.argv[2]] if cmd != "autosend-all" else None
 
     if cmd == "preview":
-        print(campaigns.preview(c).replace("<b>", "").replace("</b>", "")
-              .replace("<code>", "").replace("</code>", ""))
+        print(
+            campaigns.preview(c)
+            .replace("<b>", "")
+            .replace("</b>", "")
+            .replace("<code>", "")
+            .replace("</code>", "")
+        )
         return 0
 
     if cmd == "send":
@@ -784,8 +854,10 @@ def main():
         print(campaigns.preview(c))
         bonus = c.meta.get("bonus_days")
         if bonus:
-            print(f"\n⚠️ Перед отправкой всем {len(users)} будет начислено "
-                  f"{bonus} дня подписки (статус → ACTIVE).")
+            print(
+                f"\n⚠️ Перед отправкой всем {len(users)} будет начислено "
+                f"{bonus} дня подписки (статус → ACTIVE)."
+            )
         print(f"\nОТПРАВИТЬ {len(users)} сообщений? Введи 'yes': ", end="")
         if input().strip().lower() != "yes":
             print("Отменено.")
@@ -871,7 +943,9 @@ def main():
             for f in res["failed"]:
                 print(f"  ⚠️ не начислено — {f}")
             if not res["ok"]:
-                print(f"{c.name}: ни одного начисления не прошло — рассылку не начинаем.")
+                print(
+                    f"{c.name}: ни одного начисления не прошло — рассылку не начинаем."
+                )
                 return 1
         stats = campaigns.send(BOT_TOKEN, c, dry_run=False)
         print(f"{c.name}: {stats}")
