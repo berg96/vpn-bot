@@ -36,7 +36,10 @@ def test_domain_move_campaign_in_runner():
     src = (ROOT / "vpn-campaign.py").read_text(encoding="utf-8")
     assert 'name="domain_move"' in src
     assert "DOMAIN_MOVE" in src
-    assert "Удалите старый профиль" in src
+    assert "актуальные серверы" in src
+    assert "Удалите" in src
+    assert "_install_url" in src
+    assert "Открыть в приложении" in src
     assert "синхронизация" in src
     assert 'SITE_URL", "https://radarshield.net"' in src
 
