@@ -42,11 +42,13 @@
   ready(function () {
     var section = document.getElementById('my-sub-section');
     if (!section) return;
-    var bid = '';
-    try { bid = localStorage.getItem('rs_device_id') || ''; } catch (_) {}
-    if (!bid) return; // нет device_id — привязки заведомо нет, не дёргаем сеть
 
-    fetch('/api/my-subscription?browser_id=' + encodeURIComponent(bid))
+    function loadSub() {
+      var bid = '';
+      try { bid = localStorage.getItem('rs_device_id') || ''; } catch (_) {}
+      if (!bid) return; // нет device_id — привязки заведомо нет, не дёргаем сеть
+
+      fetch('/api/my-subscription?browser_id=' + encodeURIComponent(bid))
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) {
         if (!d || !d.found || !d.sub_url) return;
@@ -146,5 +148,14 @@
         }
       })
       .catch(function () {});
+    }
+
+    var migrateReady = window.rsDeviceReady;
+    if (migrateReady && typeof migrateReady.then === 'function') {
+      migrateReady.then(loadSub).catch(loadSub);
+    } else {
+      loadSub();
+    }
+    window.addEventListener('rs:device-migrated', loadSub);
   });
 })();

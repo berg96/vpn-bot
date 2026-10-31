@@ -54,21 +54,28 @@
 // видимой на случай, если whois ничего не найдёт). Новый браузер (нет
 // rs_device_id) нигде не привязан — whois для него заведомо пустой, не дёргаем.
 (function() {
-  var existingId = '';
-  try { existingId = localStorage.getItem('rs_device_id') || ''; } catch (_) {}
-  if (!existingId) return;
-  fetch('/api/whois?browser_id=' + encodeURIComponent(existingId))
-    .then(function(r) { return r.ok ? r.json() : null; })
-    .then(function(d) {
-      var acc = d && d.found && d.accounts && d.accounts[0];
-      // username может отсутствовать (у юзера нет TG-логина) — для редиректа
-      // нужны только uid+sig, по ним /pay откроет тарифы.
-      if (acc && acc.uid && acc.sig) {
-        window.location.replace('/pay?uid=' + encodeURIComponent(acc.uid) +
-          '&sig=' + encodeURIComponent(acc.sig) + '&auto=1');
-      }
-    })
-    .catch(function() {});
+  function tryWhois() {
+    var existingId = '';
+    try { existingId = localStorage.getItem('rs_device_id') || ''; } catch (_) {}
+    if (!existingId) return;
+    fetch('/api/whois?browser_id=' + encodeURIComponent(existingId))
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(d) {
+        var acc = d && d.found && d.accounts && d.accounts[0];
+        // username может отсутствовать (у юзера нет TG-логина) — для редиректа
+        // нужны только uid+sig, по ним /pay откроет тарифы.
+        if (acc && acc.uid && acc.sig) {
+          window.location.replace('/pay?uid=' + encodeURIComponent(acc.uid) +
+            '&sig=' + encodeURIComponent(acc.sig) + '&auto=1');
+        }
+      })
+      .catch(function() {});
+  }
+  // Ждём мост со старого домена: иначе whois уйдёт с свежим UUID до postMessage.
+  var ready = window.rsDeviceReady;
+  if (ready && typeof ready.then === 'function') ready.then(tryWhois).catch(tryWhois);
+  else tryWhois();
+  window.addEventListener('rs:device-migrated', tryWhois);
 })();
 </script>
 {% endif %}
