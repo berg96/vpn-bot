@@ -8,6 +8,7 @@
       {
         "address": "1.1.1.1",
         "domains": [
+          "domain:radarshield.net",
           "domain:radarshield.mooo.com",
           "domain:robokassa.ru",
           "domain:robokassa.com",
@@ -84,6 +85,7 @@
       {
         "type": "field",
         "domain": [
+          "domain:radarshield.net",
           "domain:radarshield.mooo.com",
           "domain:robokassa.ru",
           "domain:robokassa.com",

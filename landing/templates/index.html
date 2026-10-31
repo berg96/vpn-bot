@@ -1,18 +1,12 @@
 {% extends "_base.html" %}
-{% block title %}RadarShield — VPN для России: работает, когда другие блокируют{% endblock %}
+{% block title %}RadarShield - VPN для России: работает, когда другие блокируют{% endblock %}
+{% set description = "RadarShield - VPN для России с умной маршрутизацией: два протокола и серверы в 4 странах. Российские сайты и банки идут напрямую. Пробный доступ с сайта без регистрации и карты, плюс 7 дней через Telegram." %}
+{% set og_title = "RadarShield - VPN для России, который не перестаёт работать" %}
 
 {% block head_extra %}
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "SoftwareApplication",
-  "name": "RadarShield",
-  "operatingSystem": "Android, iOS, Windows, macOS",
-  "applicationCategory": "UtilitiesApplication",
-  "description": "VPN для России с двумя протоколами и 12 серверами в 4 странах: продолжает работать, когда другие блокируют. Российские сайты и банки идут напрямую, скорость на них не падает.",
-  "offers": {"@type": "Offer", "price": "0", "priceCurrency": "RUB"}
-}
-</script>
+<!-- Сайт, приложение с тарифами и FAQ собираются в landing/seo.py, тарифы
+     берутся из config.PLANS, вопросы из того же списка, что видимый блок. -->
+<script type="application/ld+json">{{ home_jsonld|tojson }}</script>
 {% endblock %}
 
 {% block body %}
@@ -80,7 +74,7 @@
 
   <div class="container">
     <div class="stats">
-      <div class="stat"><div class="k">4 страны</div><div class="v">12 серверов на выбор</div></div>
+      <div class="stat"><div class="k">4 страны</div><div class="v">Reality и Hysteria2</div></div>
       <div class="stat"><div class="k">{{ trial_hours }} ч</div><div class="v">бесплатно без карты</div></div>
       <div class="stat"><div class="k">250 ₽</div><div class="v">месяц безлимита</div></div>
       <div class="stat"><div class="k">RU → напрямую</div><div class="v">банки и госуслуги работают</div></div>
@@ -219,9 +213,17 @@
       <div class="feat">
         <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg></div>
         <h3>Не храним содержимое</h3>
-        <p>Видим только объём трафика — он нужен для контроля лимитов. Что именно вы открываете, не логируется и не анализируется.</p>
+        <p>Видим только объём трафика - он нужен для контроля лимитов. Что именно вы открываете, не логируется и не анализируется.</p>
       </div>
     </div>
+    <p class="lead" style="margin-top:28px;max-width:720px">
+      Подробнее:
+      <a href="/dlya-rossii">VPN для России и банки напрямую</a>
+      ·
+      <a href="/dva-protokola">зачем два протокола в одной подписке</a>
+      ·
+      <a href="/guide">установка на телефон и компьютер</a>.
+    </p>
   </div>
 </section>
 
@@ -302,6 +304,26 @@
         <p>Чего не хватает, что раздражает, что стоит добавить — сервис растёт ровно из таких сообщений. Отвечаем на каждое.</p>
       </div>
     </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section id="faq">
+  <div class="container">
+    <div class="section-head">
+      <div><div class="section-tag">Частые вопросы</div><h2>Коротко о главном.</h2></div>
+    </div>
+    <div class="features">
+      {% for question, answer in home_faq %}
+      <div class="feat">
+        <h3>{{ question }}</h3>
+        <p>{{ answer }}</p>
+      </div>
+      {% endfor %}
+    </div>
+    <p style="color:var(--ink-dim);font-size:15px;margin-top:22px">
+      Остальное есть в <a href="/guide">инструкции</a> или у <a href="https://t.me/{{ support_username }}" target="_blank" rel="noopener">поддержки</a>.
+    </p>
   </div>
 </section>
 

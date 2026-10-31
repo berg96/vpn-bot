@@ -47,7 +47,7 @@ RECEIPT_TAXATION = os.environ.get("RECEIPT_TAXATION", "usn_income")
 RECEIPT_TAX = os.environ.get("RECEIPT_TAX", "none")
 RECEIPT_PAYMENT_METHOD = os.environ.get("RECEIPT_PAYMENT_METHOD", "full_prepayment")
 RECEIPT_PAYMENT_OBJECT = os.environ.get("RECEIPT_PAYMENT_OBJECT", "service")
-RECEIPT_DEFAULT_EMAIL = os.environ.get("RECEIPT_DEFAULT_EMAIL", "noreply@radarshield.mooo.com")
+RECEIPT_DEFAULT_EMAIL = os.environ.get("RECEIPT_DEFAULT_EMAIL", "noreply@radarshield.net")
 RECEIPT_ITEM_NAME_PREFIX = os.environ.get(
     "RECEIPT_ITEM_NAME_PREFIX", "Подписка на сервис RadarShield"
 )

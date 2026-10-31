@@ -234,8 +234,8 @@ p.qr-desktop-only{display:block}
 .doc p,.doc li{font-size:.98rem;color:var(--ink-dim)}
 .doc ol,.doc ul{padding-left:28px;margin:8px 0 16px}
 .doc li{margin-bottom:6px}
-.doc a{color:var(--accent);border-bottom:1px dotted rgba(255,183,3,0.4)}
-.doc a:hover{border-color:var(--accent)}
+.doc a:not(.btn){color:var(--accent);border-bottom:1px dotted rgba(255,183,3,0.4)}
+.doc a:not(.btn):hover{border-color:var(--accent)}
 .doc .req{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:24px 0;font-size:.9rem;color:var(--ink-dim)}
 .doc .req b{color:var(--ink)}
 

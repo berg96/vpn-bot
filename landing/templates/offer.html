@@ -19,7 +19,7 @@
 <h2>2. Предмет договора</h2>
 <p>Исполнитель предоставляет Пользователю платный доступ к программному сервису умной маршрутизации
 сетевого трафика «RadarShield» (далее — «Сервис»), доступному на сайте
-<a href="https://radarshield.mooo.com">radarshield.mooo.com</a> и через Telegram-бота
+<a href="{{ site_url }}">{{ site_url|replace("https://", "") }}</a> и через Telegram-бота
 <a href="https://t.me/{{ bot_username }}">@{{ bot_username }}</a>, путём выдачи Пользователю
 персональной ссылки на конфигурационный профиль (далее — «Подписка»).</p>
 <p>Страна происхождения услуги — Российская Федерация. Услуга предоставляется в электронной форме
@@ -135,7 +135,7 @@
   <b>Адрес:</b> {{ ip_address }}<br>
   {% if support_phone %}<b>Контактный телефон:</b> {{ support_phone }}<br>{% endif %}
   <b>Контактный e-mail:</b> <a href="mailto:{{ support_email }}">{{ support_email }}</a><br>
-  <b>Сайт:</b> <a href="https://radarshield.mooo.com">https://radarshield.mooo.com</a>
+  <b>Сайт:</b> <a href="{{ site_url }}">{{ site_url }}</a>
 </p>
 
 {% endblock %}
