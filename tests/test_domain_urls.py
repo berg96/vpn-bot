@@ -40,6 +40,7 @@ def test_domain_move_campaign_in_runner():
     assert "Мы переехали на radarshield.net" in src
     assert "Сайт RadarShield теперь на radarshield.net" in src
     assert "красная кнопка справа на карточке" in src
+    assert "на котором работает наш VPN" in src
     assert "Удалите" in src
     assert "_domain_move_has_sub" in src
     assert "_domain_move_buttons" in src
