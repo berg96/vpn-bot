@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from typing import Any, Awaitable, Callable
 from urllib.parse import quote
 import aiohttp
@@ -42,7 +43,7 @@ def _assign_mz_username(tg_id: int, tg_username: str | None, first_name: str | N
     return new_name
 
 
-LANDING_BASE_URL = "https://radarshield.mooo.com"
+LANDING_BASE_URL = os.environ.get("SITE_URL", "https://radarshield.net").rstrip("/")
 
 import sub_tokens  # noqa: E402
 
@@ -141,7 +142,7 @@ def _pay_url(tg_id: int) -> str:
 # расходиться с /refund — это оферта, а не маркетинг.
 REFUND_NOTE = (
     "\n\n🛡 <i>Не подошло — вернём деньги за неиспользованные дни. "
-    "<a href=\"https://radarshield.mooo.com/refund\">Условия возврата</a></i>"
+    f"<a href=\"{LANDING_BASE_URL}/refund\">Условия возврата</a></i>"
 )
 
 

@@ -84,6 +84,11 @@ IP_ADDRESS = os.environ.get("IP_ADDRESS", "")
 SUPPORT_EMAIL = os.environ.get("SUPPORT_EMAIL", "chigar2010@yandex.ru")
 SUPPORT_PHONE = os.environ.get("SUPPORT_PHONE", "")
 DOCS_UPDATED_AT = os.environ.get("DOCS_UPDATED_AT", "23 апреля 2026 г.")
+# Канонический адрес сайта и ссылок подписки/оплаты. Старый mooo.com держим
+# живым на nginx для уже вставленных профилей; новые выдачи только с SITE_URL.
+SITE_URL = os.environ.get("SITE_URL", "https://radarshield.net").rstrip("/")
+SITE_HOST = SITE_URL.removeprefix("https://").removeprefix("http://").split("/")[0]
+LEGACY_SITE_HOST = "radarshield.mooo.com"
 
 
 def _page_context(request):
@@ -100,6 +105,7 @@ def _page_context(request):
         "support_phone": SUPPORT_PHONE,
         "updated_at": DOCS_UPDATED_AT,
         "turnstile_site_key": TURNSTILE_SITE_KEY,
+        "site_url": SITE_URL,
     }
 
 
@@ -518,7 +524,7 @@ def _lp_sub_link(username: str) -> str:
     import base64
 
     tok = base64.urlsafe_b64encode(username.encode()).decode().rstrip("=")
-    return f"https://radarshield.mooo.com/sub/{tok}#{sub_tokens.PROFILE_NAME}"
+    return f"{SITE_URL}/sub/{tok}#{sub_tokens.PROFILE_NAME}"
 
 
 def _is_unlimited(user: dict) -> bool:
@@ -564,20 +570,18 @@ def _captive_clash_yaml(pay_url: str, remark: str) -> str:
     Всё остальное — REJECT на клиенте, **до** туннеля. Юзер видит «нет
     интернета» во всех приложениях кроме нашего сайта.
 
+    Hosts на origin НЕ пиним: у части РФ-провайдеров TCP до IP мастера мёртв,
+    а SITE_HOST сидит за Cloudflare proxy — нужен обычный DNS на anycast CF.
+
     Первая строка `#!profile-update-interval: 12` — формат Karing (он
     парсит profile-update-interval из тела YAML, не из HTTP-заголовка).
     """
+    pay_host = SITE_HOST
     return f"""#!profile-update-interval: 12
 mode: rule
 port: 7890
 allow-lan: false
 log-level: warning
-
-# Hosts: жёстко прибиваем наш домен к IP сервера. Если у клиента DNS не
-# работает (РФ-провайдер блочит 1.1.1.1, captive-туннель режет UDP 53,
-# и т.п.) — этот mapping всё равно даст связаться с лендингом по DIRECT.
-hosts:
-  radarshield.mooo.com: 82.38.171.220
 
 dns:
   enable: true
@@ -587,12 +591,13 @@ dns:
     - 1.1.1.1
     - 8.8.8.8
   nameserver-policy:
-    'radarshield.mooo.com': 1.1.1.1
+    '{SITE_HOST}': 1.1.1.1
+    '{LEGACY_SITE_HOST}': 1.1.1.1
     '+.robokassa.ru': 1.1.1.1
     '+.robokassa.com': 1.1.1.1
 
 proxies:
-  - name: '🔴 ИСТЕКЛА · ОПЛАТИ: radarshield.mooo.com/pay'
+  - name: '🔴 ИСТЕКЛА · ОПЛАТИ: {pay_host}/pay'
     type: vless
     server: {CAPTIVE_HOST}
     port: {CAPTIVE_PORT}
@@ -615,7 +620,7 @@ proxy-groups:
   - name: 'captive'
     type: select
     proxies:
-      - '🔴 ИСТЕКЛА · ОПЛАТИ: radarshield.mooo.com/pay'
+      - '🔴 ИСТЕКЛА · ОПЛАТИ: {pay_host}/pay'
 
 rules:
   # Локалка
@@ -624,8 +629,9 @@ rules:
   - IP-CIDR,172.16.0.0/12,DIRECT,no-resolve
   - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
 
-  # Наш сайт + Robokassa — DIRECT, идут без VPN
-  - DOMAIN-SUFFIX,radarshield.mooo.com,DIRECT
+  # Наш сайт (.net + старый mooo) + Robokassa — DIRECT, идут без VPN
+  - DOMAIN-SUFFIX,{SITE_HOST},DIRECT
+  - DOMAIN-SUFFIX,{LEGACY_SITE_HOST},DIRECT
   - DOMAIN-SUFFIX,robokassa.ru,DIRECT
   - DOMAIN-SUFFIX,robokassa.com,DIRECT
   - DOMAIN-SUFFIX,cpropayments.ru,DIRECT
@@ -670,9 +676,9 @@ def _captive_sub_response(tg_id: int | None = None, ua: str = ""):
 
     if tg_id is not None:
         uid = str(tg_id)
-        pay_url = f"https://radarshield.mooo.com/pay?uid={uid}&sig={_make_pay_sig(uid)}"
+        pay_url = f"{SITE_URL}/pay?uid={uid}&sig={_make_pay_sig(uid)}"
     else:
-        pay_url = "https://radarshield.mooo.com/pay"
+        pay_url = f"{SITE_URL}/pay"
 
     remark = f"🔴 Продли подписку → {pay_url}"
 
@@ -970,13 +976,13 @@ async def open_app(request: Request, token: str):
     link_uid: str | None = None
     link_sig: str | None = None
     if tg_id is not None and db.get_mz_username(tg_id):
-        sub_url = f"https://radarshield.mooo.com/sub/{token}#{sub_tokens.PROFILE_NAME}"
+        sub_url = f"{SITE_URL}/sub/{token}#{sub_tokens.PROFILE_NAME}"
         # Страница открыта из бота — tg_id известен, тихо привязываем браузер.
         link_uid = str(tg_id)
         link_sig = _make_pay_sig(link_uid)
 
     if not sub_url:
-        sub_url = "https://radarshield.mooo.com/sub/expired"
+        sub_url = f"{SITE_URL}/sub/expired"
 
     return templates.TemplateResponse("install.html", {
         "request": request,
@@ -1244,7 +1250,7 @@ async def my_subscription(request: Request, browser_id: str = "", fingerprint: s
     # тому, кто и так уже прошёл проверку по browser_id, — новых данных не раскрываем.
     return {
         "found": True,
-        "sub_url": f"https://radarshield.mooo.com/sub/{sub_tokens.make_sub_token(tg_id)}#{sub_tokens.PROFILE_NAME}",
+        "sub_url": f"{SITE_URL}/sub/{sub_tokens.make_sub_token(tg_id)}#{sub_tokens.PROFILE_NAME}",
         "status": status,
         "username": db.get_username_by_tg_id(tg_id),
         "expire_at": expire_ts,
@@ -1489,7 +1495,7 @@ async def _send_activation_notice(
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="👤 Профиль", callback_data="profile")],
                 [InlineKeyboardButton(text="📲 Открыть в приложении",
-                                      url=f"https://radarshield.mooo.com/open/{sub_tokens.make_sub_token(tg_id)}")],
+                                      url=f"{SITE_URL}/open/{sub_tokens.make_sub_token(tg_id)}")],
             ]),
         )
         if int(os.environ.get("ADMIN_TG_ID", 0)):

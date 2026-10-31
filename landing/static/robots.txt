@@ -11,4 +11,4 @@ Disallow: /api/
 Disallow: /pay
 Disallow: /trial
 
-Sitemap: https://radarshield.mooo.com/sitemap.xml
+Sitemap: https://radarshield.net/sitemap.xml

@@ -6,7 +6,7 @@
 Свойство: для одного и того же tg_id токен **всегда один и тот же**, пока
 жив SUB_TOKEN_SECRET. Подделать без секрета невозможно (2^128).
 
-Пользователь вставляет ссылку `radarshield.mooo.com/sub/<token>` один раз
+Пользователь вставляет ссылку `radarshield.net/sub/<token>` один раз
 и навсегда — продление, смена лимита, ротация конфигов клиенту не видны.
 """
 
@@ -24,12 +24,12 @@ _SIG_BYTES = 16   # 128 bits
 #: Karing берёт имя профиля ИЗ САМОЙ ССЫЛКИ: фрагмент `#…` → `?remarks=` →
 #: `?name=` → HTML-title → иначе домен (add_profile_by_link_or_content_screen.dart).
 #: Заголовок `content-disposition` он игнорирует — поэтому профиль назывался
-#: «radarshield.mooo.com». Фрагмент на сервер не отправляется, так что для FlClash
+#: «radarshield.net». Фрагмент на сервер не отправляется, так что для FlClash
 #: (он берёт имя из `content-disposition`) и для остальных клиентов это no-op.
 PROFILE_NAME = "RadarShield"
 
 
-def sub_url(tg_id: int, base: str = "https://radarshield.mooo.com") -> str:
+def sub_url(tg_id: int, base: str = "https://radarshield.net") -> str:
     """Ссылка подписки для пользователя — с именем профиля во фрагменте."""
     return f"{base}/sub/{make_sub_token(tg_id)}#{PROFILE_NAME}"
 

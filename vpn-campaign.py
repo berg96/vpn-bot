@@ -31,14 +31,16 @@ import sub_tokens  # noqa: E402
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 BOT_USERNAME = os.environ.get("BOT_USERNAME", "radarshield_bot")
+LANDING_BASE_URL = os.environ.get("SITE_URL", "https://radarshield.net").rstrip("/")
+SITE_HOST = LANDING_BASE_URL.removeprefix("https://").removeprefix("http://").split("/")[0]
 
 
 def _sub_url(tg_id: int) -> str:
-    return f"https://radarshield.mooo.com/sub/{sub_tokens.make_sub_token(tg_id)}"
+    return sub_tokens.sub_url(tg_id, base=LANDING_BASE_URL)
 
 
 def _install_url(tg_id: int) -> str:
-    return f"https://radarshield.mooo.com/open/{sub_tokens.make_sub_token(tg_id)}"
+    return f"{LANDING_BASE_URL}/open/{sub_tokens.make_sub_token(tg_id)}"
 
 
 def _age_days(iso_ts: str) -> float:
@@ -229,6 +231,64 @@ LEGACY_PROFILE = campaigns.Campaign(
     once=True,
 )
 
+# ── Кампания: переезд на radarshield.net ──────────────────────────────────────
+# Старый FreeDNS-домен (mooo.com) у части РФ-провайдеров (в т.ч. Ростелеком)
+# перестал открываться: TCP до IP мастера режется, автообновление профиля молчит.
+# Новый домен за Cloudflare proxy. «Синхронизация» по старой ссылке не поможет —
+# нужна новая ссылка и замена профиля.
+#
+# Аудитория: все с активной подпиской в боевой панели (как migrate_profile).
+# Транзакционная, once: без замены ссылки часть клиентов останется на мёртвом URL.
+
+_DOMAIN_MOVE_HOWTO = (
+    "<b>Как заменить на каждом устройстве:</b>\n"
+    "1. Откройте приложение (FlClash / Karing / RadarShield).\n"
+    "2. Удалите старый профиль RadarShield "
+    "(в FlClash: «Профили» → ⋮ на карточке → удалить; "
+    "в Karing: «Профили» → свайп или меню карточки → удалить).\n"
+    "3. Добавьте новый: вставьте ссылку из этого сообщения "
+    "(FlClash: «Профили» → «+» / импорт из буфера; "
+    "Karing: «Профили» → добавить по ссылке).\n\n"
+    "Не нажимайте только «синхронизация» на старом профиле: он по-прежнему "
+    "ходит на старый адрес и у части провайдеров не обновится."
+)
+
+
+def domain_move_recipients() -> list[dict]:
+    return migrate_profile_recipients()
+
+
+def _domain_move_text(user: dict) -> str:
+    sub = _sub_url(user["tg_id"])
+    return (
+        f"🌐 <b>Мы переехали на {SITE_HOST}</b>\n\n"
+        "Старый адрес подписки у части провайдеров перестал открываться, "
+        "поэтому профиль мог не обновляться сам по себе.\n\n"
+        "Нужно один раз заменить ссылку подписки на новую. "
+        "Ссылка постоянная, дальше всё снова будет обновляться само.\n\n"
+        f"🔗 Новая ссылка:\n<code>{sub}</code>\n\n"
+        f"{_DOMAIN_MOVE_HOWTO}\n\n"
+        "Ту же ссылку всегда можно взять в боте командой /profile.\n\n"
+        "Если не получится за пару минут — напишите в поддержку, поможем.\n\n"
+        "Команда RadarShield"
+    )
+
+
+DOMAIN_MOVE = campaigns.Campaign(
+    name="domain_move",
+    kind="transactional",
+    recipients=domain_move_recipients,
+    text=_domain_move_text,
+    # Deep-link /open/ намеренно не даём первым шагом: он добавляет второй
+    # профиль, а старый с мёртвым URL остаётся выбранным (проверено 14.07).
+    # Ссылка в <code> + кнопка «Моя подписка» в боте.
+    buttons=lambda u: [
+        [{"text": "🔑 Моя подписка", "url": f"https://t.me/{BOT_USERNAME}?start=profile"}],
+        [{"text": "🆘 Поддержка", "url": "https://t.me/radarshield_support_bot"}],
+    ],
+    once=True,
+)
+
 
 # ── Кампании: возврат ушедших (win-back) — два касания по дате истечения ──────
 # Аудитория: подписка в панели ЕСТЬ, но НЕ активна, бота не блокировал.
@@ -398,7 +458,7 @@ WIN_BACK_90 = campaigns.Campaign(
 def _site_link(tg_id: int) -> str:
     """Персональная ссылка на главную: даёт лендингу подписанный uid, чтобы браузер
     тихо привязался к аккаунту (link.js) и чат поддержки на сайте узнал человека."""
-    return (f"https://radarshield.mooo.com/?uid={tg_id}"
+    return (f"{LANDING_BASE_URL}/?uid={tg_id}"
             f"&sig={sub_tokens.make_pay_sig(tg_id)}")
 
 
@@ -462,7 +522,7 @@ def _support_site_text(user: dict) -> str:
             "🆘 <b>Служба поддержки</b> — @radarshield_support_bot\n"
             "Пишите по любому поводу: не подключается VPN, не добавляется профиль, "
             "вопросы по оплате. Поможем настроить и во всём разберёмся.\n\n"
-            "🌐 <b>Сайт</b> — radarshield.mooo.com\n"
+            f"🌐 <b>Сайт</b> — {SITE_HOST}\n"
             "Здесь можно скачать приложение под ваше устройство, оформить или "
             "продлить подписку, а ещё — написать нам в чат прямо на сайте, "
             "если Telegram вдруг окажется недоступен.\n\n"
@@ -473,7 +533,7 @@ def _support_site_text(user: dict) -> str:
         return (
             "🌐 <b>Если бот вдруг не откроется — есть сайт</b>\n\n"
             "Бывает, что провайдер режет доступ или Telegram недоступен. На этот "
-            "случай всё важное продублировано на сайте — radarshield.mooo.com:\n\n"
+            f"случай всё важное продублировано на сайте — {SITE_HOST}:\n\n"
             "• скачать приложение под ваше устройство;\n"
             "• оформить или продлить подписку и оплатить картой;\n"
             "• найти свой платёж, если что-то пошло не так.\n\n"
@@ -488,7 +548,7 @@ def _support_site_text(user: dict) -> str:
         "1. <b>Ссылка подписки постоянная.</b> Команда <code>/profile</code> в боте — "
         "и она у вас. Меняете телефон или переустанавливаете приложение — просто "
         "вставляете её снова, заводить ничего заново не нужно.\n\n"
-        "2. <b>Приложение под любое устройство</b> — на сайте radarshield.mooo.com. "
+        f"2. <b>Приложение под любое устройство</b> — на сайте {SITE_HOST}. "
         "Там же оплата, если бот недоступен.\n\n"
         "3. <b>Поддержка живая</b> — @radarshield_support_bot. Отвечаем и помогаем "
         "настроить, а не отписываемся шаблоном.\n\n"
@@ -646,7 +706,8 @@ REFERRAL_INVITE = campaigns.Campaign(
 )
 
 CAMPAIGNS = {c.name: c for c in (
-    MIGRATE_PROFILE, LEGACY_PROFILE, WIN_BACK_30, WIN_BACK_90, SUPPORT_SITE, TRIAL_STUCK,
+    MIGRATE_PROFILE, LEGACY_PROFILE, DOMAIN_MOVE,
+    WIN_BACK_30, WIN_BACK_90, SUPPORT_SITE, TRIAL_STUCK,
     REFERRAL_INVITE,
 )}
 

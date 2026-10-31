@@ -109,7 +109,7 @@
 {% if sub_url %}
 <script>
   window.SUB_URL = {{ sub_url|tojson }};
-  window.INSTALL_URL = {{ ("https://radarshield.mooo.com/i/" ~ token)|tojson }};
+  window.INSTALL_URL = {{ (site_url ~ "/i/" ~ token)|tojson }};
 </script>
 <script src="/static/app.js"></script>
 <script src="/static/qrcode.min.js"></script>
