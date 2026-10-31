@@ -26,7 +26,9 @@ _AI_BOTS = [
     "Google-Extended", "Applebot-Extended", "Bingbot", "YandexBot",
 ]
 
-_PRIVATE = ["/sub/", "/open/", "/s/", "/i/", "/api/", "/pay", "/trial"]
+# /pay не в Disallow: страница с noindex, но краулер должен её увидеть и
+# прочитать robots meta; иначе URL из меню попадает в индекс «blocked».
+_PRIVATE = ["/sub/", "/open/", "/s/", "/i/", "/api/", "/trial"]
 
 
 def page_lastmod(tpl: str) -> str:

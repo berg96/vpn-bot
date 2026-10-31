@@ -131,8 +131,9 @@ def test_robots_opens_site_and_closes_private():
     txt = seo.robots_txt(SITE)
     assert f"Sitemap: {SITE}/sitemap.xml" in txt
     assert "User-agent: GPTBot" in txt
-    for private in ("/sub/", "/api/", "/pay", "/trial"):
+    for private in ("/sub/", "/api/", "/trial"):
         assert f"Disallow: {private}" in txt
+    assert "Disallow: /pay" not in txt
 
 
 def test_sitemap_lists_public_pages_with_lastmod():

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <meta name="robots" content="{{ robots|default('index, follow') }}">
 {% block meta %}
-<meta name="description" content="{{ description|default('RadarShield — VPN для России, который продолжает работать, когда другие блокируют: два протокола и 12 серверов в 4 странах. Российские сайты и банки идут напрямую, скорость не падает. 3 часа бесплатно, без регистрации и карты.') }}">
+<meta name="description" content="{{ description|default('RadarShield - VPN для России, который продолжает работать, когда другие блокируют: два протокола и серверы в 4 странах. Российские сайты и банки идут напрямую, скорость не падает. Пробный доступ без регистрации и карты.') }}">
 {% endblock %}
 <title>{% block title %}RadarShield — умная маршрутизация интернет-трафика{% endblock %}</title>
 <link rel="canonical" href="{{ site_url }}{{ request.url.path }}">
@@ -18,8 +18,8 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="RadarShield">
 <meta property="og:url" content="{{ site_url }}{{ request.url.path }}">
-<meta property="og:title" content="{{ og_title|default('RadarShield — VPN для России, который не перестаёт работать') }}">
-<meta property="og:description" content="{{ description|default('VPN для России, который продолжает работать, когда другие блокируют: два протокола и 12 серверов в 4 странах. Российские сайты и банки — напрямую. 3 часа бесплатно без регистрации, 7 дней и 5 ГБ через Telegram.') }}">
+<meta property="og:title" content="{{ og_title|default('RadarShield - VPN для России, который не перестаёт работать') }}">
+<meta property="og:description" content="{{ description|default('VPN для России, который продолжает работать, когда другие блокируют: два протокола и серверы в 4 странах. Российские сайты и банки - напрямую. Пробный доступ без регистрации, 7 дней и 5 ГБ через Telegram.') }}">
 <!-- PNG, а не SVG: Telegram, VK и соцсети SVG-превью не рисуют.
      Исходник: static/og-image.svg, рендер cairosvg 1200x630. -->
 <meta property="og:image" content="{{ site_url }}/static/og-image.png">
