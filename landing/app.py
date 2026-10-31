@@ -245,8 +245,8 @@ async def _security_middleware(request: Request, call_next):
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com; "
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-        "font-src 'self' https://fonts.gstatic.com data:; "
+        "style-src 'self' 'unsafe-inline'; "
+        "font-src 'self' data:; "
         "img-src 'self' data: blob:; "
         "frame-src https://challenges.cloudflare.com; "
         "connect-src 'self' https://challenges.cloudflare.com; "
@@ -1670,4 +1670,20 @@ async def guide(request: Request):
         **_page_context(request),
         "downloads": APP_DOWNLOADS,
         "page_updated": seo.page_lastmod("guide.html"),
+    })
+
+
+@app.api_route("/dlya-rossii", methods=["GET", "HEAD"], response_class=HTMLResponse)
+async def page_dlya_rossii(request: Request):
+    return templates.TemplateResponse("dlya-rossii.html", {
+        **_page_context(request),
+        "page_updated": seo.page_lastmod("dlya-rossii.html"),
+    })
+
+
+@app.api_route("/dva-protokola", methods=["GET", "HEAD"], response_class=HTMLResponse)
+async def page_dva_protokola(request: Request):
+    return templates.TemplateResponse("dva-protokola.html", {
+        **_page_context(request),
+        "page_updated": seo.page_lastmod("dva-protokola.html"),
     })

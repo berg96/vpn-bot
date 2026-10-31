@@ -85,6 +85,8 @@ def _jsonld_blocks(html):
 @pytest.mark.parametrize("tpl,path", [
     ("index.html", "/"),
     ("guide.html", "/guide"),
+    ("dlya-rossii.html", "/dlya-rossii"),
+    ("dva-protokola.html", "/dva-protokola"),
     ("offer.html", "/offer"),
     ("privacy.html", "/privacy"),
     ("refund.html", "/refund"),
@@ -139,7 +141,8 @@ def test_sitemap_lists_public_pages_with_lastmod():
     ns = {"s": "http://www.sitemaps.org/schemas/sitemap/0.9"}
     locs = [u.findtext("s:loc", namespaces=ns) for u in root.findall("s:url", ns)]
     assert locs == [f"{SITE}{p}" for p in
-                    ("/", "/guide", "/offer", "/privacy", "/refund", "/security")]
+                    ("/", "/guide", "/dlya-rossii", "/dva-protokola",
+                     "/offer", "/privacy", "/refund", "/security")]
     for private in ("/sub/", "/open/", "/s/", "/i/", "/api/", "/pay", "/trial"):
         assert f"{SITE}{private}" not in xml
     for url in root.findall("s:url", ns):
@@ -152,8 +155,23 @@ def test_llms_txt_has_facts_and_links():
                        PRICES, TRIAL_HOURS, TRIAL_MB)
     assert txt.startswith("# RadarShield")
     assert f"{SITE}/guide" in txt
+    assert f"{SITE}/dlya-rossii" in txt
+    assert f"{SITE}/dva-protokola" in txt
     assert "1890 ₽" in txt
     assert "https://t.me/radarshield_bot" in txt
+
+
+def test_no_google_fonts_on_public_shell():
+    """Публичные оболочки не тянут Google Fonts CDN: самохостинг + CSP."""
+    base = pathlib.Path(TPL_DIR).joinpath("_base.html").read_text(encoding="utf-8")
+    install = pathlib.Path(TPL_DIR).joinpath("install.html").read_text(encoding="utf-8")
+    app_src = pathlib.Path(TPL_DIR).parent.joinpath("app.py").read_text(encoding="utf-8")
+    fonts_css = pathlib.Path(TPL_DIR).parent.joinpath("static", "fonts.css")
+    assert "/static/fonts.css" in base
+    assert fonts_css.is_file()
+    for blob in (base, install, app_src):
+        assert "fonts.googleapis.com" not in blob
+        assert "fonts.gstatic.com" not in blob
 
 
 def test_texts_follow_real_tariffs():
@@ -188,7 +206,8 @@ def test_public_routes_answer_head():
     """HEAD на публичных страницах не должен отдавать 405: краулеры им проверяют
     доступность. Проверяем по исходнику, чтобы тест не тянул fastapi в CI."""
     src = pathlib.Path(TPL_DIR).parent.joinpath("app.py").read_text(encoding="utf-8")
-    for path in ("/", "/guide", "/offer", "/privacy", "/refund", "/security",
+    for path in ("/", "/guide", "/dlya-rossii", "/dva-protokola",
+                 "/offer", "/privacy", "/refund", "/security",
                  "/robots.txt", "/sitemap.xml", "/llms.txt"):
         pattern = r'@app\.api_route\("%s", methods=\["GET", "HEAD"\]' % re.escape(path)
         assert re.search(pattern, src), f"{path} без HEAD"

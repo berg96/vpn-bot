@@ -1,0 +1,94 @@
+{% extends "_base.html" %}
+{% block title %}Два протокола VPN: Reality и Hysteria2 в одной подписке{% endblock %}
+{% set description = "Почему один протокол VPN часто перестаёт работать у провайдера и как RadarShield держит два транспорта в одном профиле: VLESS Reality и Hysteria2. Переключение в приложении, без новой ссылки." %}
+{% set og_title = "Два протокола VPN в одной подписке RadarShield" %}
+
+{% block head_extra %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Article",
+      "@id": "{{ site_url }}/dva-protokola#article",
+      "headline": "Два протокола VPN: Reality и Hysteria2 в одной подписке",
+      "description": {{ description|tojson }},
+      "url": "{{ site_url }}/dva-protokola",
+      "inLanguage": "ru-RU",
+      {% if page_updated %}"dateModified": "{{ page_updated }}",{% endif %}
+      "publisher": {"@id": "{{ site_url }}/#org"},
+      "about": {"@id": "{{ site_url }}/#app"},
+      "mainEntityOfPage": "{{ site_url }}/dva-protokola"
+    },
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "Главная", "item": "{{ site_url }}/"},
+        {"@type": "ListItem", "position": 2, "name": "Два протокола", "item": "{{ site_url }}/dva-protokola"}
+      ]
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Нужна ли вторая ссылка подписки для резервного протокола?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Нет. Оба транспорта лежат в одном профиле RadarShield. В приложении выбираете другой узел или группу, ссылку заново вставлять не нужно."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Чем Reality отличается от Hysteria2?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "VLESS Reality выглядит для сети как обычный HTTPS-визит на популярный сайт и удобен в большинстве сетей. Hysteria2 идёт поверх UDP и помогает там, где обычные TCP-каналы уже режут. Вместе они покрывают разные сценарии у провайдера."
+          }
+        }
+      ]
+    }
+  ]
+}
+</script>
+{% endblock %}
+
+{% block body %}
+<main class="doc">
+  <nav aria-label="Навигация" style="font-size:14px;color:var(--ink-mute);margin-bottom:14px">
+    <a href="/" style="color:inherit">Главная</a> · Два протокола
+  </nav>
+  <h1>Два протокола в одной подписке</h1>
+  <p class="doc-meta">Обновлено {{ page_updated }}. Коротко: зачем Reality и Hysteria2 рядом и как ими пользоваться без второй ссылки.</p>
+
+  <p>Многие VPN-клиенты завязаны на один транспорт. Когда провайдер начинает резать типичные сигнатуры, соединение падает у всех, у кого тот же протокол. RadarShield кладёт в профиль два разных транспорта и набор серверов в нескольких странах, чтобы можно было переключиться без покупки другого сервиса.</p>
+
+  <h2>VLESS Reality</h2>
+  <p>Основной канал. Трафик выглядит как обычный HTTPS к знакомому сайту, поэтому проходит в большинстве домашних и мобильных сетей. Для повседневной работы обычно достаточно выбрать сервер Reality в приложении.</p>
+
+  <h2>Hysteria2</h2>
+  <p>Резервный канал поверх UDP. Имеет смысл, когда TCP-туннели начинают обрываться или сильно тормозить. В том же профиле переключаетесь на узел Hysteria2 - отдельно ничего устанавливать не нужно.</p>
+
+  <h2>Как переключиться</h2>
+  <ol>
+    <li>Откройте FLClash (Android, Windows) или Karing (iPhone, iPad, Mac).</li>
+    <li>В списке узлов выберите другой сервер или группу с пометкой Hysteria2 / Reality.</li>
+    <li>Дождитесь статуса подключения. Ссылку подписки заново вставлять не нужно.</li>
+  </ol>
+  <p>Пошаговые скрины по платформам: <a href="/guide">инструкция по установке</a>.</p>
+
+  <h2>Частые вопросы</h2>
+  <h3 style="font-size:1.05rem;margin:20px 0 8px">Нужна ли вторая ссылка подписки?</h3>
+  <p>Нет. Оба транспорта лежат в одном профиле. Меняется только выбранный узел в приложении.</p>
+  <h3 style="font-size:1.05rem;margin:20px 0 8px">Чем это связано с российскими сайтами?</h3>
+  <p>Маршрутизация «РФ напрямую» работает независимо от выбранного транспорта. Банки и госуслуги по правилам профиля не гоняются через зарубежный IP. Подробнее: <a href="/dlya-rossii">VPN для России</a>.</p>
+
+  <h2>Попробовать</h2>
+  <p>Короткий пробный доступ - с главной без карты. Более длинный - через Telegram-бота. Оплата и тарифы: <a href="/#pricing">блок тарифов</a>.</p>
+
+  <p style="margin-top:28px;display:flex;flex-wrap:wrap;gap:12px">
+    <a class="btn btn-primary" href="/#cta">Попробовать бесплатно</a>
+    <a class="btn btn-ghost" href="/guide">Открыть инструкцию</a>
+  </p>
+</main>
+{% endblock %}

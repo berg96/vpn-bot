@@ -44,10 +44,17 @@ def test_domain_move_campaign_in_runner():
     assert 'SITE_URL", "https://radarshield.net"' in src
 
 
-def test_static_seo_files_point_to_net():
-    robots = (ROOT / "landing" / "static" / "robots.txt").read_text(encoding="utf-8")
-    sitemap = (ROOT / "landing" / "static" / "sitemap.xml").read_text(encoding="utf-8")
-    assert "https://radarshield.net/sitemap.xml" in robots
-    assert "https://radarshield.net/" in sitemap
+def test_dynamic_seo_defaults_to_net():
+    """robots/sitemap из landing.seo от SITE_URL; статики в static/ больше нет."""
+    from landing import seo
+
+    assert not (ROOT / "landing" / "static" / "robots.txt").exists()
+    assert not (ROOT / "landing" / "static" / "sitemap.xml").exists()
+    site = "https://radarshield.net"
+    robots = seo.robots_txt(site)
+    sitemap = seo.sitemap_xml(site)
+    assert f"Sitemap: {site}/sitemap.xml" in robots
+    assert f"<loc>{site}/</loc>" in sitemap
+    assert f"<loc>{site}/dlya-rossii</loc>" in sitemap
     assert "mooo.com" not in robots
     assert "mooo.com" not in sitemap

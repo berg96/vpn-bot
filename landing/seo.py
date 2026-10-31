@@ -9,6 +9,8 @@ _TPL_DIR = os.path.join(os.path.dirname(__file__), "templates")
 PAGES = [
     ("/", "index.html", "weekly", "1.0"),
     ("/guide", "guide.html", "monthly", "0.9"),
+    ("/dlya-rossii", "dlya-rossii.html", "monthly", "0.8"),
+    ("/dva-protokola", "dva-protokola.html", "monthly", "0.8"),
     ("/offer", "offer.html", "yearly", "0.3"),
     ("/privacy", "privacy.html", "yearly", "0.3"),
     ("/refund", "refund.html", "yearly", "0.3"),
@@ -254,6 +256,8 @@ def llms_txt(site_url: str, bot_username: str, support_email: str,
 - [Главная]({site_url}/): что это, как работает, тарифы, пробный доступ.
 - [Инструкция]({site_url}/guide): установка и настройка на Android, iPhone, iPad,
   Windows и macOS, импорт ссылки подписки, частые ошибки.
+- [VPN для России]({site_url}/dlya-rossii): маршрутизация, банки и сайты напрямую.
+- [Два протокола]({site_url}/dva-protokola): Reality и Hysteria2 в одной подписке.
 - [Публичная оферта]({site_url}/offer): условия договора.
 - [Политика конфиденциальности]({site_url}/privacy): какие данные собираются.
 - [Условия возврата]({site_url}/refund): порядок и сроки возврата денег.
