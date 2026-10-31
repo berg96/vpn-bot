@@ -1132,9 +1132,6 @@
     window.addEventListener('rs:browser-linked', function () {
       fetchIdentity().then(renderIdentityStrip);
     });
-    window.addEventListener('rs:device-migrated', function () {
-      fetchIdentity().then(renderIdentityStrip);
-    });
     schedulePromo();
   }
 

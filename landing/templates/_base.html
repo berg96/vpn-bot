@@ -62,13 +62,6 @@
 
 <!-- Самохостинг шрифтов (не Google Fonts CDN). -->
 <link rel="stylesheet" href="/static/fonts.css">
-{% if site_url and legacy_site_host %}
-<script>
-window.RS_SITE_URL = {{ site_url|tojson }};
-window.RS_LEGACY_ORIGIN = {{ ('https://' ~ legacy_site_host)|tojson }};
-</script>
-<script src="/static/device-migrate.js"></script>
-{% endif %}
 {% if turnstile_site_key %}
 <link rel="preconnect" href="https://challenges.cloudflare.com" crossorigin>
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>

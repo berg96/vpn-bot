@@ -120,7 +120,6 @@ def _page_context(request):
         "updated_at": DOCS_UPDATED_AT,
         "turnstile_site_key": TURNSTILE_SITE_KEY,
         "site_url": SITE_URL,
-        "legacy_site_host": LEGACY_SITE_HOST,
     }
 
 
@@ -235,35 +234,26 @@ async def _security_middleware(request: Request, call_next):
         response = RedirectResponse(slash_target, status_code=301)
     else:
         response = await call_next(request)
+    response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    # Мост device_id: страница на mooo должна открываться iframe'ом с .net
-    # (XFO DENY и frame-ancestors 'none' её ломают). Остальной сайт — как раньше.
-    if request.url.path == "/legacy-device-bridge":
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'none'; "
-            "script-src 'unsafe-inline'; "
-            f"frame-ancestors https://{SITE_HOST} https://www.{SITE_HOST}; "
-            "base-uri 'none'"
-        )
-    else:
-        response.headers["X-Frame-Options"] = "DENY"
-        # CSP — self + Cloudflare Turnstile + Robokassa + iframe на старый
-        # домен для переноса rs_device_id после смены .mooo → .net.
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com; "
-            "style-src 'self' 'unsafe-inline'; "
-            "font-src 'self' data:; "
-            "img-src 'self' data: blob:; "
-            f"frame-src https://challenges.cloudflare.com https://{LEGACY_SITE_HOST}; "
-            "connect-src 'self' https://challenges.cloudflare.com; "
-            "form-action 'self' https://auth.robokassa.ru; "
-            "frame-ancestors 'none'; "
-            "base-uri 'self'"
-        )
+    # CSP — разрешаем self + Cloudflare Turnstile + FingerprintJS + Robokassa
+    # (только для платёжной кнопки), inline-стили (мы их активно используем)
+    # и inline-скрипты (наши формы).
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com; "
+        "style-src 'self' 'unsafe-inline'; "
+        "font-src 'self' data:; "
+        "img-src 'self' data: blob:; "
+        "frame-src https://challenges.cloudflare.com; "
+        "connect-src 'self' https://challenges.cloudflare.com; "
+        "form-action 'self' https://auth.robokassa.ru; "
+        "frame-ancestors 'none'; "
+        "base-uri 'self'"
+    )
     # Server: nginx/... добавляет nginx уже после нас — отключается через
     # `server_tokens off;` в nginx.conf, не из приложения.
     return response
@@ -1640,18 +1630,6 @@ async def doc_security(request: Request):
         "description": "Как устроена защита RadarShield: шифрование соединений, хранение ключей и доступов, что происходит при инциденте.",
         "heading": "Политика информационной безопасности",
     })
-
-
-@app.api_route("/legacy-device-bridge", methods=["GET", "HEAD"], response_class=HTMLResponse,
-               include_in_schema=False)
-async def legacy_device_bridge(request: Request):
-    """Минимальная страница для скрытого iframe с .net: читает rs_device_id
-    в localStorage старого origin и шлёт родителю postMessage. Сама по себе
-    бесполезна, в индекс не нужна."""
-    return templates.TemplateResponse(
-        "legacy-device-bridge.html",
-        {**_page_context(request), "robots": "noindex, nofollow"},
-    )
 
 
 @app.api_route("/robots.txt", methods=["GET", "HEAD"], include_in_schema=False)
