@@ -161,6 +161,15 @@ def test_llms_txt_has_facts_and_links():
     assert "https://t.me/radarshield_bot" in txt
 
 
+def test_dva_protokola_faq_matches_visible():
+    html = _env().get_template("dva-protokola.html").render(**_base_context("/dva-protokola"))
+    graph = json.loads(_jsonld_blocks(html)[-1])["@graph"]
+    faq = next(n for n in graph if n["@type"] == "FAQPage")
+    for item in faq["mainEntity"]:
+        assert item["name"] in html
+        assert item["acceptedAnswer"]["text"] in html
+
+
 def test_no_google_fonts_on_public_shell():
     """Публичные оболочки не тянут Google Fonts CDN: самохостинг + CSP."""
     base = pathlib.Path(TPL_DIR).joinpath("_base.html").read_text(encoding="utf-8")

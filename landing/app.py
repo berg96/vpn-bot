@@ -1521,7 +1521,7 @@ async def _send_activation_notice(
     if not _tg_bot or not tg_id:
         return
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-    sub_url = sub_tokens.sub_url(tg_id)
+    sub_url = sub_tokens.sub_url(tg_id, base=SITE_URL)
     try:
         await _tg_bot.send_message(
             tg_id,
