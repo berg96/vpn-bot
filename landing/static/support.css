@@ -144,7 +144,7 @@
   border-radius: 50%;
   background: #7f8fa3;
 }
-.rs-chat-status.is-online::before { background: #83d043; box-shadow: 0 0 6px rgba(131,208,67,0.6); }
+.rs-chat-status.is-online::before { background: #83d043; }
 .rs-chat-close {
   background: none;
   border: none;

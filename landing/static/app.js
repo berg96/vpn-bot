@@ -28,7 +28,7 @@
       card.classList.add('highlight');
       var badge = document.createElement('span');
       badge.className = 'plat-badge';
-      badge.textContent = '★ Рекомендуем';
+      badge.textContent = 'Рекомендуем';
       card.insertBefore(badge, card.firstChild);
       var note = document.createElement('span');
       note.className = 'plat-note';
