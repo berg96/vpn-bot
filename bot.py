@@ -81,6 +81,7 @@ def _bonus_applied_text(expire_str: str, sub_url: str) -> str:
 def _bonus_applied_keyboard(tg_id: int) -> "InlineKeyboardMarkup":
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="👤 Профиль", callback_data="profile")],
+        [InlineKeyboardButton(text="🔐 Привязать браузер", callback_data="browser_code")],
         [InlineKeyboardButton(text="📲 Открыть в приложении", url=_install_url(tg_id))],
         [InlineKeyboardButton(text="📖 Установка", callback_data="apps_menu")],
         [InlineKeyboardButton(text="💬 Поддержка", url=config.SUPPORT_LINK)],
@@ -169,6 +170,7 @@ def start_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📖 Установка", callback_data="apps_menu")],
         [InlineKeyboardButton(text="👤 Профиль", callback_data="profile")],
+        [InlineKeyboardButton(text="🔐 Привязать браузер", callback_data="browser_code")],
         [InlineKeyboardButton(text="🎁 Пригласить друга", callback_data="ref_info")],
         [InlineKeyboardButton(text="💬 Поддержка", url=config.SUPPORT_LINK)],
     ])
@@ -349,6 +351,9 @@ async def cmd_start(msg: Message, command: CommandObject):
         if command.args == "profile":
             await cmd_profile(msg)
             return
+        if command.args == "browser":
+            await browser_code(msg)
+            return
         if command.args.startswith("ref_"):
             referrer = command.args[4:].strip()
             referrer = int(referrer) if referrer.isdigit() else None
@@ -363,14 +368,6 @@ async def _handle_landing_deeplink(msg: Message, token: str) -> None:
 
     lead = db.get_landing_lead(token)
 
-    # Этап 4: тихо связываем браузер этого лида с TG-аккаунтом. Лендинг сохранил
-    # на лиде device_id браузера — здесь известен tg_id, можно записать пару.
-    if lead and lead.get("device_id"):
-        try:
-            db.link_browser(lead["device_id"], tg_id, lead.get("fingerprint"), "trial_deeplink")
-        except Exception as e:
-            logger.error(f"link_browser failed for {tg_id}: {e}")
-
     if not lead or lead["claimed_tg_id"] is not None:
         await _do_start(tg_id, username, first_name, msg.answer)
         return
@@ -380,9 +377,15 @@ async def _handle_landing_deeplink(msg: Message, token: str) -> None:
     current_mz = None
     if not is_new:
         current_mz = db.get_mz_username(tg_id)
+        if not current_mz:
+            await msg.answer("Не удалось найти подписку. Попробуй позже или обратись в поддержку.")
+            return
         if current_mz:
             try:
-                existing = await panel.get_user(tg_id, current_mz)
+                existing = await panel.get_user_strict(tg_id, current_mz)
+                if existing is None:
+                    await msg.answer("Не удалось найти подписку. Попробуй позже или обратись в поддержку.")
+                    return
                 if existing and existing.get("status") == "active":
                     # Marzban сам считает status. active = действует (включая expire=0 — unlimited).
                     # Ранее была проверка (expire or 0) > now_ts, и unlimited (expire=0)
@@ -390,6 +393,8 @@ async def _handle_landing_deeplink(msg: Message, token: str) -> None:
                     has_active_sub = True
             except Exception as e:
                 logger.error(f"get_user failed: {e}")
+                await msg.answer("Не удалось проверить подписку. Попробуй ещё раз позже.")
+                return
 
     if has_active_sub:
         kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -464,7 +469,8 @@ async def _handle_landing_deeplink(msg: Message, token: str) -> None:
         except Exception as e:
             logger.error(f"reactivation failed for {token}: {e}")
             await msg.answer(
-                "❌ Что-то пошло не так при активации. Напиши в поддержку: " + config.SUPPORT_LINK,
+                "Не удалось проверить результат активации. Попробуй позже открыть /profile. "
+                "Если доступ не появился, напиши в поддержку: " + config.SUPPORT_LINK,
             )
         return
 
@@ -642,6 +648,20 @@ async def cb_lp_merge(call: CallbackQuery):
 
 
 # ── /profile ─────────────────────────────────────────────────────────────────
+
+@dp.message(Command("browser_code"))
+@dp.callback_query(F.data == "browser_code")
+async def browser_code(event: Message | CallbackQuery):
+    msg = event.message if isinstance(event, CallbackQuery) else event
+    if msg.chat.type != "private":
+        return
+    if not db.get_mz_username(event.from_user.id):
+        await msg.answer("Сначала создай подписку в боте.")
+    else:
+        code = db.issue_browser_code(event.from_user.id)
+        await msg.answer(f"Код для привязки браузера: <code>{code}</code>\n\nВведи его на сайте RadarShield. Код действует 10 минут и только один раз. Никому его не сообщай.", parse_mode=ParseMode.HTML)
+    if isinstance(event, CallbackQuery):
+        await event.answer()
 
 @dp.message(Command("profile"))
 @dp.callback_query(F.data == "profile")

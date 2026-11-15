@@ -1,6 +1,8 @@
 import sqlite3
 import os
 import json
+import hashlib
+import secrets
 from datetime import datetime, timezone, timedelta
 
 DB_PATH = os.environ.get("DB_PATH", "/data/vpn_bot.db")
@@ -103,6 +105,8 @@ def init_db():
         """)
         c.execute("CREATE INDEX IF NOT EXISTS ix_browser_links_fp ON browser_links(fingerprint)")
         c.execute("CREATE INDEX IF NOT EXISTS ix_browser_links_tg ON browser_links(tg_id)")
+        c.execute("CREATE TABLE IF NOT EXISTS browser_auth_codes (code_hash TEXT PRIMARY KEY, tg_id INTEGER NOT NULL, expires_at TEXT NOT NULL)")
+        c.execute("CREATE TABLE IF NOT EXISTS browser_auth_sessions (session_hash TEXT PRIMARY KEY, tg_id INTEGER NOT NULL, expires_at TEXT NOT NULL)")
         # Tinkoff rub-платежи — ИСТОРИЧЕСКАЯ таблица, только хранение (24 платежа за
         # апрель 2026). Эквайринг Т-Банка отвалился 29.04.2026, приём перешёл на
         # Robokassa; код записи/чтения удалён 23.07.2026, DDL оставлен ради данных.
@@ -257,6 +261,39 @@ def init_db():
             c.execute("ALTER TABLE users ADD COLUMN referred_by INTEGER")
         if "referral_credited" not in ucols:
             c.execute("ALTER TABLE users ADD COLUMN referral_credited INTEGER NOT NULL DEFAULT 0")
+
+
+def _auth_hash(value: str) -> str:
+    return hashlib.sha256(value.encode()).hexdigest()
+
+
+def issue_browser_code(tg_id: int) -> str:
+    code = secrets.token_urlsafe(12)
+    expires = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+    with _conn() as c:
+        c.execute("DELETE FROM browser_auth_codes WHERE expires_at <= ? OR tg_id = ?", (_now_iso(), tg_id))
+        c.execute("INSERT INTO browser_auth_codes VALUES (?, ?, ?)", (_auth_hash(code), tg_id, expires))
+    return code
+
+
+def redeem_browser_code(code: str) -> str | None:
+    now = _now_iso()
+    session = secrets.token_urlsafe(32)
+    with _conn() as c:
+        c.execute("BEGIN IMMEDIATE")
+        row = c.execute("SELECT tg_id FROM browser_auth_codes WHERE code_hash = ? AND expires_at > ?", (_auth_hash(code), now)).fetchone()
+        if not row:
+            return None
+        c.execute("DELETE FROM browser_auth_codes WHERE code_hash = ?", (_auth_hash(code),))
+        c.execute("DELETE FROM browser_auth_sessions WHERE expires_at <= ?", (now,))
+        c.execute("INSERT INTO browser_auth_sessions VALUES (?, ?, ?)", (_auth_hash(session), row[0], (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()))
+    return session
+
+
+def browser_session_user(session: str) -> int | None:
+    with _conn() as c:
+        row = c.execute("SELECT tg_id FROM browser_auth_sessions WHERE session_hash = ? AND expires_at > ?", (_auth_hash(session), _now_iso())).fetchone()
+    return row[0] if row else None
 
 
 def record_user(tg_id: int, username: str | None) -> bool:

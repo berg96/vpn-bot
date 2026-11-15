@@ -1,10 +1,4 @@
-// Блок «Моя подписка» — только для УЗНАННОГО браузера. Макет Claude Design (17.07).
-//
-// Ключ — rs_device_id (browser_id), который лендинг кладёт в localStorage (app.js)
-// и привязывает к аккаунту на pay/install (link.js). /api/my-subscription отдаёт
-// ссылку ТОЛЬКО привязанному браузеру — по tg_id её взять нельзя (см. коммент
-// эндпоинта). Свежий/непривязанный браузер здесь не увидит ничего: секция остаётся
-// hidden, никаких плейсхолдеров и «залогиньтесь» (решение дизайнера).
+// Ссылка доступна только браузеру, подтверждённому кодом из Telegram.
 //
 // Ссылка по умолчанию ЗАМАСКИРОВАНА: это фактически ключ доступа, а читать её
 // глазами не нужно — есть «Открыть в приложении» и «Скопировать». Раскрытие —
@@ -42,11 +36,7 @@
   ready(function () {
     var section = document.getElementById('my-sub-section');
     if (!section) return;
-    var bid = '';
-    try { bid = localStorage.getItem('rs_device_id') || ''; } catch (_) {}
-    if (!bid) return; // нет device_id — привязки заведомо нет, не дёргаем сеть
-
-    fetch('/api/my-subscription?browser_id=' + encodeURIComponent(bid))
+    fetch('/api/my-subscription', {cache: 'no-store'})
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) {
         if (!d || !d.found || !d.sub_url) return;

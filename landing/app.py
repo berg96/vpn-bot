@@ -8,6 +8,7 @@ import re
 import secrets
 import time
 from datetime import datetime, timezone, timedelta
+from urllib.parse import urlsplit
 
 import aiohttp
 from fastapi import FastAPI, Request, Form, HTTPException
@@ -254,6 +255,8 @@ async def _security_middleware(request: Request, call_next):
         "frame-ancestors 'none'; "
         "base-uri 'self'"
     )
+    if request.url.path in {"/api/my-subscription", "/api/whois", "/api/browser-auth"}:
+        response.headers["Cache-Control"] = "no-store"
     # Server: nginx/... добавляет nginx уже после нас — отключается через
     # `server_tokens off;` в nginx.conf, не из приложения.
     return response
@@ -1159,65 +1162,29 @@ async def user_lookup(request: Request):
 @app.post("/api/link-browser")
 @limiter.limit("30/minute")
 async def link_browser(request: Request):
-    """Тихая фоновая привязка браузера к TG-аккаунту. Вызывается со страниц,
-    открытых из бота (/pay, /open) — там tg_id известен и подписан HMAC.
-    Браузер передаёт свой стабильный browser_id + подписанный uid."""
-    try:
-        data = await request.json()
-    except Exception:
-        return {"error": "bad_request"}
-    browser_id = str(data.get("browser_id", "")).strip()[:64]
-    uid = str(data.get("uid", "")).strip()
-    sig = str(data.get("sig", "")).strip()
-    fingerprint = str(data.get("fingerprint", "")).strip()[:128] or None
-    source = str(data.get("source", "page"))[:32]
-    if not browser_id or not uid or not sig:
-        return {"error": "bad_request"}
-    if not _verify_pay_sig(uid, sig):
-        return {"error": "bad_sig"}
-    try:
-        db.link_browser(browser_id, int(uid), fingerprint, source)
-    except (ValueError, TypeError):
-        return {"error": "bad_uid"}
+    # Старые версии страниц могут вызывать этот endpoint. Платёжная ссылка
+    # не подтверждает владение аккаунтом и не должна привязывать браузер.
     return {"ok": True}
 
 
 @app.post("/api/link-browser/feedback")
 @limiter.limit("30/minute")
 async def link_browser_feedback(request: Request):
-    """Юзер подтвердил/отверг распознанный аккаунт (кнопки «это я» / «не я»)."""
-    try:
-        data = await request.json()
-    except Exception:
-        return {"error": "bad_request"}
-    browser_id = str(data.get("browser_id", "")).strip()[:64]
-    uid = str(data.get("uid", "")).strip()
-    confirmed = data.get("confirmed")
-    if not browser_id or not uid or confirmed not in (1, -1):
-        return {"error": "bad_request"}
-    try:
-        db.set_browser_link_confirmed(browser_id, int(uid), int(confirmed))
-    except (ValueError, TypeError):
-        return {"error": "bad_uid"}
     return {"ok": True}
 
 
 @app.get("/api/whois")
 @limiter.limit("30/minute")
 async def whois(request: Request, browser_id: str = "", fingerprint: str = ""):
-    """Кто стоит за этим браузером. Ключ — browser_id (неугадываемый токен),
-    поэтому открытый доступ безопасен: знать чужой browser_id неоткуда.
-    Используется автоопределением на /pay и support-виджетом."""
-    browser_id = (browser_id or "").strip()[:64]
-    fingerprint = (fingerprint or "").strip()[:128] or None
-    if not browser_id and not fingerprint:
+    """Определить аккаунт только по подтверждённой сессии браузера."""
+    session = request.cookies.get("rs_browser_session", "")
+    session_user = db.browser_session_user(session) if session else None
+    if session_user is not None:
+        accounts = [{"tg_id": session_user, "confirmed": 1, "linked_at": ""}]
+    else:
         return {"found": False}
-    accounts = db.get_browser_accounts(browser_id, fingerprint)
     if not accounts:
         return {"found": False}
-    # «Основной» аккаунт браузера = тот, к которому браузер был привязан
-    # РАНЬШЕ всех (min linked_at, среди не-отвергнутых). Используется support-bot
-    # для объединения web-чатов того же tg_id в один тред (фича A).
     primary_tg_id = min(accounts, key=lambda a: a["linked_at"])["tg_id"]
     out = []
     for acc in accounts[:5]:
@@ -1241,35 +1208,21 @@ async def whois(request: Request, browser_id: str = "", fingerprint: str = ""):
             "sig": _make_pay_sig(str(tg_id)),
             "sub": sub,
         })
-    # Все browser_id, привязанные к primary_tg_id (для фичи A — единый чат:
-    # support-bot ищет веб-треды по всем браузерам аккаунта, не только текущему).
-    linked_browsers = db.get_browsers_for_tg(primary_tg_id)
     return {
         "found": True, "accounts": out,
         "primary_tg_id": primary_tg_id,
-        "linked_browsers": linked_browsers,
+        "linked_browsers": [],
     }
 
 
 @app.get("/api/my-subscription")
 @limiter.limit("30/minute")
 async def my_subscription(request: Request, browser_id: str = "", fingerprint: str = ""):
-    """Постоянная ссылка подписки для УЗНАННОГО браузера.
-
-    Ключ — browser_id (неугадываемый токен), а НЕ tg_id. tg_id перебираем: отдай
-    ссылку по нему открыто — и эндпоинт превратится в станок «отчекань подписку
-    любого id» (HMAC цел, но мы сами её чеканим по чужому номеру). browser_id
-    подставить нельзя — знать/перебрать чужой неоткуда. Тот же путь, что /api/whois.
-    """
-    browser_id = (browser_id or "").strip()[:64]
-    fingerprint = (fingerprint or "").strip()[:128] or None
-    if not browser_id and not fingerprint:
+    """Ссылка только для сессии, подтверждённой кодом из Telegram."""
+    session = request.cookies.get("rs_browser_session", "")
+    tg_id = db.browser_session_user(session) if session else None
+    if tg_id is None:
         return {"found": False}
-    accounts = db.get_browser_accounts(browser_id, fingerprint)
-    if not accounts:
-        return {"found": False}
-    # Основной аккаунт браузера = привязан раньше всех (как в whois).
-    tg_id = min(accounts, key=lambda a: a["linked_at"])["tg_id"]
     if not db.get_mz_username(tg_id):
         return {"found": False}
     # Истёкшему ссылку тоже отдаём: продлит — та же ссылка оживёт. Статус кладём,
@@ -1282,9 +1235,6 @@ async def my_subscription(request: Request, browser_id: str = "", fingerprint: s
         expire_ts = (u or {}).get("expire")
     except Exception as e:
         logger.warning(f"my_subscription panel lookup {tg_id}: {e}")
-    # username — по просьбе дизайнера: человек должен сразу видеть, ЧЕЙ аккаунт
-    # узнали (у одного браузера может быть привязано несколько). Отдаём только
-    # тому, кто и так уже прошёл проверку по browser_id, — новых данных не раскрываем.
     return {
         "found": True,
         "sub_url": f"{SITE_URL}/sub/{sub_tokens.make_sub_token(tg_id)}#{sub_tokens.PROFILE_NAME}",
@@ -1292,6 +1242,31 @@ async def my_subscription(request: Request, browser_id: str = "", fingerprint: s
         "username": db.get_username_by_tg_id(tg_id),
         "expire_at": expire_ts,
     }
+
+
+@app.post("/api/browser-auth")
+@limiter.limit("5/minute")
+async def browser_auth(request: Request):
+    if request.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/json":
+        return Response(status_code=415)
+    origin = request.headers.get("origin")
+    if origin:
+        parsed = urlsplit(origin)
+        if parsed.scheme != request.url.scheme or parsed.netloc.lower() != request.headers.get("host", "").lower():
+            return Response(status_code=403)
+    try:
+        data = await request.json()
+        code = str(data.get("code", "")).strip()
+    except (ValueError, AttributeError):
+        return {"error": "invalid_code"}
+    if not re.fullmatch(r"[A-Za-z0-9_-]{16}", code):
+        return {"error": "invalid_code"}
+    session = db.redeem_browser_code(code)
+    if not session:
+        return {"error": "invalid_code"}
+    response = Response(content='{"ok":true}', media_type="application/json", headers={"Cache-Control": "no-store"})
+    response.set_cookie("rs_browser_session", session, max_age=30 * 86400, httponly=True, secure=True, samesite="lax")
+    return response
 
 
 @app.get("/pay", response_class=HTMLResponse)

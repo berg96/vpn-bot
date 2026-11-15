@@ -121,6 +121,10 @@ class RemnawaveBackend(PanelBackend):
             logger.error(f"get_user error: {e}")
             return None
 
+    async def get_user_strict(self, tg_id: int, mz_username: str | None = None) -> dict | None:
+        raw = await self._get_raw(mz_username or f"tg_{tg_id}")
+        return self._shape(raw) if raw else None
+
     async def _create(
         self, username: str, expire_ts: int, data_limit_bytes: int,
         telegram_id: int | None = None,

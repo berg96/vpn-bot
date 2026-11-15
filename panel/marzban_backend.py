@@ -71,6 +71,15 @@ class MarzbanBackend(PanelBackend):
             logger.error(f"get_user error: {e}")
             return None
 
+    async def get_user_strict(self, tg_id: int, mz_username: str | None = None) -> dict | None:
+        username = mz_username or f"tg_{tg_id}"
+        s = await self._sess()
+        resp = await s.get(f"{self.url}/api/user/{username}", headers=await self._headers())
+        if resp.status == 404:
+            return None
+        resp.raise_for_status()
+        return await resp.json()
+
     async def create_or_extend_user(
         self, tg_id: int, days: int, mz_username: str | None = None
     ) -> dict:
