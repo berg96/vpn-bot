@@ -80,6 +80,10 @@ def test_auth_endpoint_sets_secure_cookie_and_rejects_replay(auth_db, monkeypatc
     assert "HttpOnly" in response.headers["set-cookie"]
     assert "Secure" in response.headers["set-cookie"]
     assert client.get("/api/my-subscription").json()["found"] is True
+    panel_lookup = AsyncMock(side_effect=RuntimeError("panel down"))
+    monkeypatch.setattr(landing.panel, "get_user", panel_lookup)
+    assert client.get("/api/browser-identity").json()["primary_tg_id"] == 123
+    panel_lookup.assert_not_awaited()
     import sub_tokens
     client.post("/api/link-browser", json={"browser_id": "browser1", "uid": "124", "sig": sub_tokens.make_pay_sig(124)})
     assert db.get_browser_accounts("browser1")[0]["tg_id"] == 124

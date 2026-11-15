@@ -255,7 +255,7 @@ async def _security_middleware(request: Request, call_next):
         "frame-ancestors 'none'; "
         "base-uri 'self'"
     )
-    if request.url.path in {"/api/my-subscription", "/api/whois", "/api/browser-auth"}:
+    if request.url.path in {"/api/my-subscription", "/api/whois", "/api/browser-auth", "/api/browser-identity"}:
         response.headers["Cache-Control"] = "no-store"
     # Server: nginx/... добавляет nginx уже после нас — отключается через
     # `server_tokens off;` в nginx.conf, не из приложения.
@@ -1242,6 +1242,17 @@ async def my_subscription(request: Request, browser_id: str = "", fingerprint: s
         "username": db.get_username_by_tg_id(tg_id),
         "expire_at": expire_ts,
     }
+
+
+@app.get("/api/browser-identity")
+@limiter.limit("300/minute")
+async def browser_identity(request: Request):
+    session = request.cookies.get("rs_browser_session", "")
+    tg_id = db.browser_session_user(session) if session else None
+    if tg_id is None:
+        return {"found": False}
+    return {"found": True, "primary_tg_id": tg_id,
+            "accounts": [{"tg_id": tg_id, "username": db.get_username_by_tg_id(tg_id), "confirmed": 1}]}
 
 
 @app.post("/api/browser-auth")

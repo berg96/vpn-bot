@@ -668,6 +668,40 @@
     renderMsg({ kind: 'sys', text: text, ts: Math.floor(Date.now() / 1000) }, false);
   }
 
+  function offerNewVerifiedChat() {
+    if (document.getElementById('rs-new-verified-chat')) return;
+    pushSys('Для безопасности начните новый чат. Предыдущая переписка останется на устройстве.');
+    var button = document.createElement('button');
+    button.id = 'rs-new-verified-chat';
+    button.type = 'button';
+    button.textContent = 'Начать новый чат';
+    button.className = 'rs-chat-btn';
+    body.appendChild(button);
+    button.addEventListener('click', function () {
+      var previous = chatKey || getCookie(COOKIE_KEY);
+      button.disabled = true;
+      try {
+        var keys = JSON.parse(localStorage.getItem('rs_previous_chat_ids') || '[]');
+        if (previous && keys.indexOf(previous) < 0) keys.push(previous);
+        localStorage.setItem('rs_previous_chat_ids', JSON.stringify(keys));
+      } catch (_) {}
+      setCookie(COOKIE_KEY, '', -1);
+      apiInit().then(function () {
+        if (es) { es.close(); es = null; }
+        renderHistory();
+        openStream();
+        button.remove();
+        pushSys('Начат новый чат. Повторите сообщение или отправку файла.');
+      }).catch(function () {
+        chatKey = previous;
+        setCookie(COOKIE_KEY, previous, COOKIE_DAYS);
+        button.disabled = false;
+        pushSys('Не удалось начать новый чат. Попробуйте ещё раз.');
+      });
+    });
+    scrollDown();
+  }
+
   function pushAndStore(m) {
     var h = loadHistory();
     h.push(m);
@@ -768,12 +802,17 @@
   function openStream() {
     if (es) { try { es.close(); } catch (_) {} }
     es = new EventSource(API_BASE + '/stream/' + encodeURIComponent(chatKey));
+    var stream = es;
     es.addEventListener('open', function () {
       setStatus(true);
     });
     es.addEventListener('error', function () {
       setStatus(false, 'переподключение…');
-      // EventSource сам реконнектится; статус восстановит open-event.
+      if (stream.readyState === EventSource.CLOSED) {
+        setTimeout(function () {
+          if (es === stream) openStream();
+        }, 5000);
+      }
     });
     es.addEventListener('message', function (ev) {
       try {
@@ -869,9 +908,10 @@
         renderHistory();
         openStream();
         if (threadClosed) showCloseCard();
-      }).catch(function () {
+      }).catch(function (err) {
         setStatus(false, 'нет связи');
-        pushSys('Не удалось подключиться. Попробуйте позже или напишите в Telegram.');
+        if (err.message === 'init 409') offerNewVerifiedChat();
+        else pushSys('Не удалось подключиться. Попробуйте позже или напишите в Telegram.');
       });
     } else {
       renderHistory();
@@ -935,8 +975,13 @@
     input.value = '';
     autoresize();
     apiSend(text)
-      .catch(function () {
-        pushSys('Сообщение не отправлено. Проверьте интернет и попробуйте ещё раз.');
+      .catch(function (err) {
+        if (err.message === 'send 409') {
+          pushAndStore({kind: 'sys', text: 'Предыдущее сообщение не отправлено. Начните новый чат и повторите отправку.', ts: Math.floor(Date.now() / 1000)});
+          if (!input.value) { input.value = text; autoresize(); }
+          offerNewVerifiedChat();
+        }
+        else pushSys('Сообщение не отправлено. Проверьте интернет и попробуйте ещё раз.');
       })
       .finally(function () {
         sendBtn.disabled = false;
@@ -1055,6 +1100,7 @@
       })
       .catch(function (err) {
         console.warn('batch upload failed:', err);
+        if (err.message.indexOf('batch 409:') === 0) offerNewVerifiedChat();
         el.classList.remove('is-pending');
         el.classList.add('is-error');
         pushSys('Не удалось загрузить файлы. Проверьте интернет и попробуйте ещё раз.');
@@ -1107,6 +1153,7 @@
       })
       .catch(function (err) {
         console.warn('upload failed:', err);
+        if (err.message.indexOf('upload 409:') === 0) offerNewVerifiedChat();
         el.classList.remove('is-pending');
         el.classList.add('is-error');
         pushSys('Не удалось загрузить файл «' + (f.name || '') + '».');
