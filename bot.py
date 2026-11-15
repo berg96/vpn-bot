@@ -22,6 +22,7 @@ import config
 import db
 import panel
 import referral
+import survey
 
 
 def _resolve_mz_username(tg_id: int, tg_username: str | None, first_name: str | None) -> str:
@@ -123,6 +124,43 @@ class ActivityMiddleware(BaseMiddleware):
 
 dp.message.middleware(ActivityMiddleware())
 dp.callback_query.middleware(ActivityMiddleware())
+
+
+async def _survey_show(call: CallbackQuery, state: dict) -> None:
+    if state["completed_at"]:
+        await call.message.answer("Спасибо! Опрос завершён, бонус ожидает начисления.")
+        return
+    index = len(state["answers"])
+    question, choices = survey.QUESTIONS[index]
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=choice, callback_data=f"survey:{index}:{i}")]
+        for i, choice in enumerate(choices)
+    ])
+    await call.message.answer(f"{index + 1}/{len(survey.QUESTIONS)}. {question}", reply_markup=keyboard)
+
+
+@dp.callback_query(F.data == "survey_start")
+async def survey_start(call: CallbackQuery):
+    await call.answer()
+    if call.message.chat.type != "private":
+        return
+    await _survey_show(call, survey.start(call.from_user.id))
+
+
+@dp.callback_query(F.data.startswith("survey:"))
+async def survey_answer(call: CallbackQuery):
+    await call.answer()
+    if call.message.chat.type != "private":
+        return
+    try:
+        _, question, choice = call.data.split(":")
+        state = survey.answer(call.from_user.id, int(question), int(choice))
+    except (ValueError, TypeError):
+        return
+    if state is None:
+        state = survey.get(call.from_user.id)
+    if state:
+        await _survey_show(call, state)
 
 
 # ── Клавиатуры ──────────────────────────────────────────────────────────────
@@ -1536,6 +1574,7 @@ async def handle_unknown(msg: Message):
 
 async def main():
     db.init_db()
+    survey.init()
     logger.info("Bot starting...")
     asyncio.create_task(_node_health_loop())
     asyncio.create_task(_expire_reminders_loop())

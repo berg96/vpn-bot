@@ -765,6 +765,20 @@ REFERRAL_INVITE = campaigns.Campaign(
     once=True,
 )
 
+SURVEY = campaigns.Campaign(
+    name="customer_survey_2026",
+    kind="marketing",
+    recipients=db.get_reachable_users,
+    text=(
+        "Привет! Помоги улучшить RadarShield: ответь на пять коротких вопросов "
+        "о своём опыте. Это займёт около двух минут.\n\n"
+        "За завершённый опрос мы добавим 7 дней подписки независимо от ответов. "
+        "Если подписка активна, дни прибавятся к её сроку."
+    ),
+    buttons=lambda u: [[{"text": "Пройти опрос", "callback_data": "survey_start"}]],
+    once=True,
+)
+
 CAMPAIGNS = {
     c.name: c
     for c in (
