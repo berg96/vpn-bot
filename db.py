@@ -407,6 +407,16 @@ def set_mz_username(tg_id: int, mz_username: str):
         )
 
 
+def ensure_mz_username(tg_id: int, candidate: str) -> str:
+    with _conn() as c:
+        c.execute("BEGIN IMMEDIATE")
+        c.execute("UPDATE users SET mz_username=? WHERE tg_id=? AND (mz_username IS NULL OR mz_username='')", (candidate, tg_id))
+        row = c.execute("SELECT mz_username FROM users WHERE tg_id=?", (tg_id,)).fetchone()
+        if not row or not row[0]:
+            raise ValueError("user missing")
+        return row[0]
+
+
 def get_sub_url(tg_id: int) -> str | None:
     with _conn() as c:
         row = c.execute("SELECT sub_url FROM users WHERE tg_id=?", (tg_id,)).fetchone()
@@ -723,6 +733,18 @@ def count_ip_leads_24h(ip_hash: str) -> int:
             (ip_hash, since),
         ).fetchone()
     return int(row[0])
+
+
+def claim_landing_for_new_user(token: str, tg_id: int, username: str | None) -> bool:
+    with _conn() as c:
+        c.execute("BEGIN IMMEDIATE")
+        lead = c.execute("SELECT mz_username FROM landing_leads WHERE token=? AND claimed_tg_id IS NULL", (token,)).fetchone()
+        if not lead or c.execute("SELECT 1 FROM users WHERE tg_id=?", (tg_id,)).fetchone():
+            return False
+        c.execute("INSERT INTO users (tg_id, username, mz_username, first_seen) VALUES (?, ?, ?, ?)",
+                  (tg_id, username, lead[0], _now_iso()))
+        c.execute("UPDATE landing_leads SET claimed_tg_id=?, claimed_at=? WHERE token=?", (tg_id, _now_iso(), token))
+        return True
 
 
 def claim_landing_lead(token: str, tg_id: int) -> dict | None:

@@ -1,7 +1,12 @@
 import json
+import logging
 from datetime import datetime, timezone
 
 import db
+import panel
+
+logger = logging.getLogger(__name__)
+BONUS_DAYS = 7
 
 QUESTIONS = (
     ("Пользуешься ли ты сейчас RadarShield?", ("Да, регулярно", "Иногда", "Пока не пользуюсь")),
@@ -54,3 +59,50 @@ def answer(tg_id, question, choice):
              "pending" if done else "incomplete", tg_id),
         )
     return get(tg_id)
+
+
+def _set_status(tg_id, old, new):
+    with db._conn() as conn:
+        result = conn.execute(
+            "UPDATE survey_responses SET reward_status=? WHERE tg_id=? AND reward_status=?",
+            (new, tg_id, old),
+        )
+        return result.rowcount == 1
+
+
+async def grant_reward(tg_id):
+    mutation_started = False
+    try:
+        username = db.ensure_mz_username(tg_id, f"tg_{tg_id}")
+        async with panel.mutation_lock(username):
+            _set_status(tg_id, "processing", "pending")
+            if not _set_status(tg_id, "pending", "processing"):
+                state = get(tg_id)
+                return state["reward_status"] if state else "missing"
+            user = await panel.backend.get_user_strict(tg_id, username)
+            if user and (not user.get("expire") or user["expire"] >= 4070908800):
+                _set_status(tg_id, "processing", "forever")
+                return "forever"
+            if user and (user.get("status") not in ("active", "expired") or
+                         (user.get("data_limit", 0) and user.get("used_traffic", 0) >= user["data_limit"])):
+                _set_status(tg_id, "processing", "manual")
+                return "manual"
+            if not _set_status(tg_id, "processing", "uncertain"):
+                return "manual"
+            mutation_started = True
+            if user:
+                await panel.backend.add_bonus_days(username, BONUS_DAYS)
+            else:
+                created = await panel.backend.create_trial_user(tg_id, days=BONUS_DAYS, data_limit_gb=0, mz_username=username)
+                if created.get("subscription_url"):
+                    db.set_sub_url(tg_id, created["subscription_url"])
+                db.mark_trial_used(tg_id)
+            _set_status(tg_id, "uncertain", "granted")
+            db.delete_reminder_events(tg_id)
+            return "granted"
+    except Exception:
+        logger.exception("survey reward failed for tg_id=%s (mutation_started=%s)", tg_id, mutation_started)
+        if not mutation_started:
+            _set_status(tg_id, "processing", "pending")
+            return "pending"
+        return "uncertain"

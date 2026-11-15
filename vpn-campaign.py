@@ -790,6 +790,7 @@ CAMPAIGNS = {
         SUPPORT_SITE,
         TRIAL_STUCK,
         REFERRAL_INVITE,
+        SURVEY,
     )
 }
 

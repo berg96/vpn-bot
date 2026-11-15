@@ -1462,7 +1462,7 @@ async def _activate_with_retry(
             mz_username = db.get_mz_username(tg_id)
             if not mz_username:
                 mz_username = panel.build_mz_username(tg_id)
-                db.set_mz_username(tg_id, mz_username)
+                mz_username = db.ensure_mz_username(tg_id, mz_username)
             user_data = await panel.create_or_extend_user(
                 tg_id, days, mz_username=mz_username,
             )

@@ -40,8 +40,7 @@ def _assign_mz_username(tg_id: int, tg_username: str | None, first_name: str | N
     if stored:
         return stored
     new_name = panel.build_mz_username(tg_id, tg_username, first_name)
-    db.set_mz_username(tg_id, new_name)
-    return new_name
+    return db.ensure_mz_username(tg_id, new_name)
 
 
 LANDING_BASE_URL = os.environ.get("SITE_URL", "https://radarshield.net").rstrip("/")
@@ -128,7 +127,30 @@ dp.callback_query.middleware(ActivityMiddleware())
 
 async def _survey_show(call: CallbackQuery, state: dict) -> None:
     if state["completed_at"]:
-        await call.message.answer("Спасибо! Опрос завершён, бонус ожидает начисления.")
+        status = await survey.grant_reward(call.from_user.id)
+        if status == "granted":
+            await call.message.answer(
+                "Спасибо за ответы! 🎁 7 дней добавлены к подписке.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="👤 Профиль", callback_data="profile")],
+                ]),
+            )
+        elif status == "forever":
+            await call.message.answer("Спасибо за ответы! Твоя подписка уже бессрочная.")
+        elif status == "pending":
+            await call.message.answer(
+                "Спасибо за ответы! Панель временно недоступна, попробуй начислить бонус позже.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="Повторить начисление", callback_data="survey_start")],
+                ]),
+            )
+        else:
+            await call.message.answer(
+                "Спасибо за ответы! Не удалось автоматически начислить бонус. Напиши в поддержку, мы разберёмся.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="Поддержка", url=config.SUPPORT_LINK)],
+                ]),
+            )
         return
     index = len(state["answers"])
     question, choices = survey.QUESTIONS[index]
@@ -399,6 +421,33 @@ async def cmd_start(msg: Message, command: CommandObject):
                     msg.answer, referrer=referrer)
 
 
+async def _reactivate_landing(tg_id: int, username: str) -> dict:
+    async with panel.mutation_lock(username):
+        latest = await panel.backend.get_user_strict(tg_id, username)
+        if latest is None:
+            raise RuntimeError("user missing during reactivation")
+        expire = latest.get("expire")
+        if (not expire and latest.get("status") == "active") or (expire and expire >= 4070908800):
+            return latest
+        if expire and expire > int(datetime.now(timezone.utc).timestamp()):
+            return await panel.backend.add_bonus_days(username, 1)
+        return await panel.backend.extend_user(username, 1, 5.0)
+
+
+async def _activate_new_landing(tg_id: int, username: str, trial_expires_at: str) -> dict:
+    async with panel.mutation_lock(username):
+        latest = await panel.backend.get_user_strict(tg_id, username)
+        if latest is None:
+            raise RuntimeError("landing user missing")
+        expire = latest.get("expire")
+        if (not expire and latest.get("status") == "active") or (expire and expire >= 4070908800):
+            return latest
+        original_expire = int(datetime.fromisoformat(trial_expires_at).timestamp())
+        if expire and expire > original_expire + 60:
+            return await panel.backend.add_bonus_days(username, 7)
+        return await panel.backend.extend_user(username, 7, 5.0)
+
+
 async def _handle_landing_deeplink(msg: Message, token: str) -> None:
     tg_id = msg.from_user.id
     username = msg.from_user.username
@@ -479,11 +528,7 @@ async def _handle_landing_deeplink(msg: Message, token: str) -> None:
         try:
             # Landing-профиль не удаляем — 3ч сам протухнет, даёт юзеру время
             # переключиться на основную ссылку.
-            updated = await panel.extend_user(
-                mz_username=current_mz,
-                total_days=1,
-                data_limit_gb=5.0,
-            )
+            updated = await _reactivate_landing(tg_id, current_mz)
             # (Синк sub_url landing-лида убран: триал-ссылка теперь стабильная
             # username-derived `_lp_sub_link`, панель-агностичная — синковать
             # изменчивый panel subscription_url больше не нужно.)
@@ -513,12 +558,10 @@ async def _handle_landing_deeplink(msg: Message, token: str) -> None:
         return
 
     # Новый юзер → auto-merge в 7д/5ГБ (маркетинг лендинга).
-    claimed = db.claim_landing_lead(token, tg_id)
-    if not claimed:
-        await _do_start(tg_id, username, first_name, msg.answer)
+    if not db.claim_landing_for_new_user(token, tg_id, username):
+        await msg.answer("Профиль уже создан. Попробуй ещё раз открыть ссылку с сайта.")
         return
 
-    db.record_user(tg_id, username)
     db.log_event(tg_id, "user_registered", {"username": username, "source": "landing"})
     db.touch_user(tg_id)
     db.log_event(tg_id, "landing_claim", {"token": token})
@@ -526,12 +569,7 @@ async def _handle_landing_deeplink(msg: Message, token: str) -> None:
     await msg.answer("⏳ Активирую 7 дней и 5 ГБ...")
 
     try:
-        user_data = await panel.extend_user(
-            mz_username=lead["mz_username"],
-            total_days=7,
-            data_limit_gb=5.0,
-        )
-        db.set_mz_username(tg_id, lead["mz_username"])
+        user_data = await _activate_new_landing(tg_id, lead["mz_username"], lead["expires_at"])
         db.mark_trial_used(tg_id)
         # Лендинг-триал создавался анонимно (lp_*, без telegramId) — теперь tg_id
         # известен, проставим его в панели для поиска. Некритично → не роняем claim.
