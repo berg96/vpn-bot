@@ -29,6 +29,28 @@ def test_survey_rejects_out_of_order_or_invalid_answers(tmp_path, monkeypatch):
     assert survey.get(1)["answers"] == []
 
 
+def test_multiple_choice_back_and_resume(tmp_path, monkeypatch):
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "survey.db"))
+    survey.init()
+    survey.start(1)
+    survey.answer(1, 0, 0)
+    assert survey.advance(1, 1) is None
+    survey.toggle(1, 1, 0)
+    survey.toggle(1, 1, 2)
+    assert survey.start(1)["draft"] == [0, 2]
+    assert survey.advance(1, 1)["answers"] == [0, [0, 2]]
+    assert survey.back(1, 2)["draft"] == [0, 2]
+    survey.toggle(1, 1, 4)
+    assert survey.get(1)["draft"] == [4]
+    survey.toggle(1, 1, 1)
+    assert survey.get(1)["draft"] == [1]
+    assert survey.advance(1, 1)["answers"] == [0, [1]]
+    survey.toggle(1, 2, 0)
+    survey.toggle(1, 2, 3)
+    assert survey.advance(1, 2)["answers"] == [0, [1], [0, 3]]
+    assert survey.back(1, 2) is None
+
+
 def completed(tmp_path, monkeypatch, tg_id=1):
     monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "survey.db"))
     db.init_db()

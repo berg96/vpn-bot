@@ -7,6 +7,7 @@ import panel
 
 logger = logging.getLogger(__name__)
 BONUS_DAYS = 7
+MULTI = {1, 2}
 
 QUESTIONS = (
     ("Пользуешься ли ты сейчас RadarShield?", ("Да, регулярно", "Иногда", "Пока не пользуюсь")),
@@ -23,15 +24,18 @@ def init():
             tg_id INTEGER PRIMARY KEY, answers TEXT NOT NULL DEFAULT '[]',
             completed_at TEXT, reward_status TEXT NOT NULL DEFAULT 'incomplete'
         )""")
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(survey_responses)")}
+        if "draft" not in columns:
+            conn.execute("ALTER TABLE survey_responses ADD COLUMN draft TEXT NOT NULL DEFAULT '[]'")
 
 
 def get(tg_id):
     with db._conn() as conn:
         row = conn.execute(
-            "SELECT answers, completed_at, reward_status FROM survey_responses WHERE tg_id=?",
+            "SELECT answers, completed_at, reward_status, draft FROM survey_responses WHERE tg_id=?",
             (tg_id,),
         ).fetchone()
-    return {"answers": json.loads(row[0]), "completed_at": row[1], "reward_status": row[2]} if row else None
+    return {"answers": json.loads(row[0]), "completed_at": row[1], "reward_status": row[2], "draft": json.loads(row[3])} if row else None
 
 
 def start(tg_id):
@@ -54,10 +58,57 @@ def answer(tg_id, question, choice):
         answers.append(choice)
         done = len(answers) == len(QUESTIONS)
         conn.execute(
-            "UPDATE survey_responses SET answers=?, completed_at=?, reward_status=? WHERE tg_id=?",
+            "UPDATE survey_responses SET answers=?, completed_at=?, reward_status=?, draft='[]' WHERE tg_id=?",
             (json.dumps(answers), datetime.now(timezone.utc).isoformat() if done else None,
              "pending" if done else "incomplete", tg_id),
         )
+    return get(tg_id)
+
+
+def toggle(tg_id, question, choice):
+    if question not in MULTI or not 0 <= choice < len(QUESTIONS[question][1]):
+        return None
+    with db._conn() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute("SELECT answers, draft, completed_at FROM survey_responses WHERE tg_id=?", (tg_id,)).fetchone()
+        if not row or row[2] or len(json.loads(row[0])) != question:
+            return None
+        draft = json.loads(row[1])
+        if question == 1 and choice == 4:
+            draft = [] if 4 in draft else [4]
+        else:
+            draft = [v for v in draft if v != 4 or question != 1]
+            draft = [v for v in draft if v != choice] if choice in draft else draft + [choice]
+        conn.execute("UPDATE survey_responses SET draft=? WHERE tg_id=?", (json.dumps(draft), tg_id))
+    return get(tg_id)
+
+
+def advance(tg_id, question):
+    with db._conn() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute("SELECT answers, draft, completed_at FROM survey_responses WHERE tg_id=?", (tg_id,)).fetchone()
+        if not row or row[2] or question not in MULTI:
+            return None
+        answers, draft = json.loads(row[0]), json.loads(row[1])
+        if len(answers) != question or not draft:
+            return None
+        answers.append(sorted(draft))
+        conn.execute("UPDATE survey_responses SET answers=?, draft='[]' WHERE tg_id=?", (json.dumps(answers), tg_id))
+    return get(tg_id)
+
+
+def back(tg_id, question):
+    with db._conn() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute("SELECT answers, completed_at FROM survey_responses WHERE tg_id=?", (tg_id,)).fetchone()
+        if not row or row[1]:
+            return None
+        answers = json.loads(row[0])
+        if len(answers) != question or not answers:
+            return None
+        previous = answers.pop()
+        draft = previous if isinstance(previous, list) else [previous]
+        conn.execute("UPDATE survey_responses SET answers=?, draft=? WHERE tg_id=?", (json.dumps(answers), json.dumps(draft), tg_id))
     return get(tg_id)
 
 

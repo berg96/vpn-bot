@@ -129,23 +129,23 @@ async def _survey_show(call: CallbackQuery, state: dict) -> None:
     if state["completed_at"]:
         status = await survey.grant_reward(call.from_user.id)
         if status == "granted":
-            await call.message.answer(
+            await call.message.edit_text(
                 "Спасибо за ответы! 🎁 7 дней добавлены к подписке.",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(text="👤 Профиль", callback_data="profile")],
                 ]),
             )
         elif status == "forever":
-            await call.message.answer("Спасибо за ответы! Твоя подписка уже бессрочная.")
+            await call.message.edit_text("Спасибо за ответы! Твоя подписка уже бессрочная.")
         elif status == "pending":
-            await call.message.answer(
+            await call.message.edit_text(
                 "Спасибо за ответы! Панель временно недоступна, попробуй начислить бонус позже.",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(text="Повторить начисление", callback_data="survey_start")],
                 ]),
             )
         else:
-            await call.message.answer(
+            await call.message.edit_text(
                 "Спасибо за ответы! Не удалось автоматически начислить бонус. Напиши в поддержку, мы разберёмся.",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(text="Поддержка", url=config.SUPPORT_LINK)],
@@ -154,11 +154,23 @@ async def _survey_show(call: CallbackQuery, state: dict) -> None:
         return
     index = len(state["answers"])
     question, choices = survey.QUESTIONS[index]
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=choice, callback_data=f"survey:{index}:{i}")]
-        for i, choice in enumerate(choices)
-    ])
-    await call.message.answer(f"{index + 1}/{len(survey.QUESTIONS)}. {question}", reply_markup=keyboard)
+    multi = index in survey.MULTI
+    rows = [[InlineKeyboardButton(
+        text=("✅ " if multi and i in state["draft"] else "") + choice,
+        callback_data=f"{'survey_toggle' if multi else 'survey'}:{index}:{i}",
+    )] for i, choice in enumerate(choices)]
+    if multi:
+        rows.append([InlineKeyboardButton(text="Далее", callback_data=f"survey_next:{index}")])
+    if index:
+        rows.append([InlineKeyboardButton(text="← Назад", callback_data=f"survey_back:{index}")])
+    text = f"{index + 1}/{len(survey.QUESTIONS)}. {question}"
+    if multi:
+        text += "\n\nМожно выбрать несколько вариантов."
+    try:
+        await call.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    except TelegramBadRequest as exc:
+        if "message is not modified" not in str(exc).lower():
+            raise
 
 
 @dp.callback_query(F.data == "survey_start")
@@ -181,6 +193,29 @@ async def survey_answer(call: CallbackQuery):
         return
     if state is None:
         state = survey.get(call.from_user.id)
+    if state:
+        await _survey_show(call, state)
+
+
+@dp.callback_query(F.data.startswith(("survey_toggle:", "survey_next:", "survey_back:")))
+async def survey_navigation(call: CallbackQuery):
+    await call.answer()
+    if call.message.chat.type != "private":
+        return
+    try:
+        parts = call.data.split(":")
+        question = int(parts[1])
+        if parts[0] == "survey_toggle" and len(parts) == 3:
+            state = survey.toggle(call.from_user.id, question, int(parts[2]))
+        elif parts[0] == "survey_next" and len(parts) == 2:
+            state = survey.advance(call.from_user.id, question)
+        elif parts[0] == "survey_back" and len(parts) == 2:
+            state = survey.back(call.from_user.id, question)
+        else:
+            return
+    except (ValueError, TypeError, IndexError):
+        return
+    state = state or survey.get(call.from_user.id)
     if state:
         await _survey_show(call, state)
 
