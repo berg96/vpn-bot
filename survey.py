@@ -44,6 +44,12 @@ def start(tg_id):
     return get(tg_id)
 
 
+def start_test(tg_id):
+    with db._conn() as conn:
+        conn.execute("DELETE FROM survey_responses WHERE tg_id=?", (-tg_id,))
+    return start(-tg_id)
+
+
 def answer(tg_id, question, choice):
     if not 0 <= question < len(QUESTIONS) or not 0 <= choice < len(QUESTIONS[question][1]):
         return None
@@ -60,7 +66,7 @@ def answer(tg_id, question, choice):
         conn.execute(
             "UPDATE survey_responses SET answers=?, completed_at=?, reward_status=?, draft='[]' WHERE tg_id=?",
             (json.dumps(answers), datetime.now(timezone.utc).isoformat() if done else None,
-             "pending" if done else "incomplete", tg_id),
+             ("test" if tg_id < 0 else "pending") if done else "incomplete", tg_id),
         )
     return get(tg_id)
 
@@ -122,6 +128,8 @@ def _set_status(tg_id, old, new):
 
 
 async def grant_reward(tg_id):
+    if tg_id <= 0:
+        return "test"
     mutation_started = False
     try:
         username = db.ensure_mz_username(tg_id, f"tg_{tg_id}")

@@ -51,6 +51,25 @@ def test_multiple_choice_back_and_resume(tmp_path, monkeypatch):
     assert survey.back(1, 2) is None
 
 
+@pytest.mark.asyncio
+async def test_test_survey_does_not_change_real_answers_or_grant(tmp_path, monkeypatch):
+    import bot
+    from types import SimpleNamespace
+
+    completed(tmp_path, monkeypatch)
+    real = survey.get(1)
+    survey.start_test(1)
+    for q in range(len(survey.QUESTIONS)):
+        survey.answer(-1, q, 0)
+    grant = AsyncMock()
+    monkeypatch.setattr(survey, "grant_reward", grant)
+    message = SimpleNamespace(edit_text=AsyncMock())
+    await bot._survey_show(SimpleNamespace(message=message, from_user=SimpleNamespace(id=1)), survey.get(-1), test=True)
+    grant.assert_not_awaited()
+    assert survey.get(1) == real
+    assert "не начислялся" in message.edit_text.await_args.args[0]
+
+
 def completed(tmp_path, monkeypatch, tg_id=1):
     monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "survey.db"))
     db.init_db()

@@ -125,8 +125,11 @@ dp.message.middleware(ActivityMiddleware())
 dp.callback_query.middleware(ActivityMiddleware())
 
 
-async def _survey_show(call: CallbackQuery, state: dict) -> None:
+async def _survey_show(call: CallbackQuery, state: dict, test: bool = False) -> None:
     if state["completed_at"]:
+        if test:
+            await call.message.edit_text("Тестовый опрос завершён. Бонус не начислялся.")
+            return
         status = await survey.grant_reward(call.from_user.id)
         if status == "granted":
             await call.message.edit_text(
@@ -157,15 +160,17 @@ async def _survey_show(call: CallbackQuery, state: dict) -> None:
     multi = index in survey.MULTI
     rows = [[InlineKeyboardButton(
         text=("✅ " if multi and i in state["draft"] else "") + choice,
-        callback_data=f"{'survey_toggle' if multi else 'survey'}:{index}:{i}",
+        callback_data=f"{'test_' if test else ''}{'survey_toggle' if multi else 'survey'}:{index}:{i}",
     )] for i, choice in enumerate(choices)]
     if multi:
-        rows.append([InlineKeyboardButton(text="Далее", callback_data=f"survey_next:{index}")])
+        rows.append([InlineKeyboardButton(text="Далее", callback_data=f"{'test_' if test else ''}survey_next:{index}")])
     if index:
-        rows.append([InlineKeyboardButton(text="← Назад", callback_data=f"survey_back:{index}")])
+        rows.append([InlineKeyboardButton(text="← Назад", callback_data=f"{'test_' if test else ''}survey_back:{index}")])
     text = f"{index + 1}/{len(survey.QUESTIONS)}. {question}"
     if multi:
         text += "\n\nМожно выбрать несколько вариантов."
+    if test:
+        text = "Тестовый режим\n\n" + text
     try:
         await call.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
     except TelegramBadRequest as exc:
@@ -181,43 +186,59 @@ async def survey_start(call: CallbackQuery):
     await _survey_show(call, survey.start(call.from_user.id))
 
 
-@dp.callback_query(F.data.startswith("survey:"))
+@dp.callback_query(F.data == "survey_test_start")
+async def survey_test_start(call: CallbackQuery):
+    await call.answer()
+    if call.message.chat.type != "private" or not config.ADMIN_TG_ID or call.from_user.id != config.ADMIN_TG_ID:
+        return
+    await _survey_show(call, survey.start_test(call.from_user.id), test=True)
+
+
+@dp.callback_query(F.data.startswith(("survey:", "test_survey:")))
 async def survey_answer(call: CallbackQuery):
     await call.answer()
     if call.message.chat.type != "private":
         return
+    test = call.data.startswith("test_")
+    if test and (not config.ADMIN_TG_ID or call.from_user.id != config.ADMIN_TG_ID):
+        return
+    tg_id = -call.from_user.id if test else call.from_user.id
     try:
         _, question, choice = call.data.split(":")
-        state = survey.answer(call.from_user.id, int(question), int(choice))
+        state = survey.answer(tg_id, int(question), int(choice))
     except (ValueError, TypeError):
         return
     if state is None:
-        state = survey.get(call.from_user.id)
+        state = survey.get(tg_id)
     if state:
-        await _survey_show(call, state)
+        await _survey_show(call, state, test=test)
 
 
-@dp.callback_query(F.data.startswith(("survey_toggle:", "survey_next:", "survey_back:")))
+@dp.callback_query(F.data.startswith(("survey_toggle:", "survey_next:", "survey_back:", "test_survey_toggle:", "test_survey_next:", "test_survey_back:")))
 async def survey_navigation(call: CallbackQuery):
     await call.answer()
     if call.message.chat.type != "private":
         return
+    test = call.data.startswith("test_")
+    if test and (not config.ADMIN_TG_ID or call.from_user.id != config.ADMIN_TG_ID):
+        return
+    tg_id = -call.from_user.id if test else call.from_user.id
     try:
-        parts = call.data.split(":")
+        parts = (call.data[5:] if test else call.data).split(":")
         question = int(parts[1])
         if parts[0] == "survey_toggle" and len(parts) == 3:
-            state = survey.toggle(call.from_user.id, question, int(parts[2]))
+            state = survey.toggle(tg_id, question, int(parts[2]))
         elif parts[0] == "survey_next" and len(parts) == 2:
-            state = survey.advance(call.from_user.id, question)
+            state = survey.advance(tg_id, question)
         elif parts[0] == "survey_back" and len(parts) == 2:
-            state = survey.back(call.from_user.id, question)
+            state = survey.back(tg_id, question)
         else:
             return
     except (ValueError, TypeError, IndexError):
         return
-    state = state or survey.get(call.from_user.id)
+    state = state or survey.get(tg_id)
     if state:
-        await _survey_show(call, state)
+        await _survey_show(call, state, test=test)
 
 
 # ── Клавиатуры ──────────────────────────────────────────────────────────────
