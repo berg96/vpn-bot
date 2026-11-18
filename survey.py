@@ -45,6 +45,13 @@ def start(tg_id):
     return get(tg_id)
 
 
+def prepare_v2_reward(tg_id):
+    start(tg_id)
+    with db._conn() as conn:
+        conn.execute("UPDATE survey_responses SET completed_at=?, reward_status='pending' WHERE tg_id=? AND reward_status='incomplete'",
+                     (datetime.now(timezone.utc).isoformat(), tg_id))
+
+
 def start_test(tg_id):
     with db._conn() as conn:
         conn.execute("DELETE FROM survey_responses WHERE tg_id=?", (-tg_id,))

@@ -10,7 +10,7 @@ from aiogram import Bot, Dispatcher, F, BaseMiddleware
 from aiogram.types import (
     Message, CallbackQuery, TelegramObject,
     InlineKeyboardMarkup, InlineKeyboardButton,
-    LabeledPrice, PreCheckoutQuery,
+    LabeledPrice, PreCheckoutQuery, ForceReply,
 )
 from aiogram.filters import CommandStart, Command, CommandObject
 from aiogram.enums import ParseMode
@@ -23,6 +23,7 @@ import db
 import panel
 import referral
 import survey
+import survey_v2
 
 
 def _resolve_mz_username(tg_id: int, tg_username: str | None, first_name: str | None) -> str:
@@ -125,6 +126,97 @@ dp.message.middleware(ActivityMiddleware())
 dp.callback_query.middleware(ActivityMiddleware())
 
 
+async def _survey2_show(message: Message, tg_id: int, state: dict) -> None:
+    if state["completed_at"]:
+        survey.prepare_v2_reward(tg_id)
+        status = await survey.grant_reward(tg_id)
+        if status == "granted":
+            text = ("Спасибо за ответы! 🎁 Бонус за опрос: 7 дней подписки.\n\n"
+                    "Пригласи друга: после первой оплаты подписки новым пользователем "
+                    "по твоей ссылке вам обоим положено по 7 дней.")
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🎁 Пригласить друга", callback_data="ref_info")],
+                [InlineKeyboardButton(text="👤 Профиль", callback_data="profile")],
+            ])
+        elif status == "forever":
+            text, kb = "Спасибо за ответы! Твоя подписка уже бессрочная.", None
+        elif status == "pending":
+            text = "Спасибо за ответы! Панель временно недоступна. Попробуй начислить бонус позже."
+            kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Повторить", callback_data="survey_start")]])
+        else:
+            text = "Спасибо за ответы! Не удалось автоматически начислить бонус. Напиши в поддержку."
+            kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Поддержка", url=config.SUPPORT_LINK)]])
+        await message.edit_text(text, reply_markup=kb)
+        return
+    step = state["step"]
+    if state["waiting"]:
+        text = "Напиши ответ одним сообщением, не более 500 символов, или пропусти."
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="Пропустить", callback_data=f"s2:skip:{step}")],
+            [InlineKeyboardButton(text="← Назад", callback_data=f"s2:back:{step}")],
+        ])
+        await message.edit_text(text, reply_markup=kb)
+        prompt = await message.answer("Ответь на это сообщение:", reply_markup=ForceReply())
+        survey_v2.set_prompt(tg_id, step, prompt.message_id)
+        return
+    question, choices = survey_v2.QUESTIONS[step]
+    multi = step in survey_v2.MULTI
+    rows = [[InlineKeyboardButton(text=("✅ " if multi and i in state["draft"] else "") + label,
+                                  callback_data=f"s2:{'toggle' if multi else 'choice'}:{step}:{i}")]
+            for i, label in enumerate(choices)]
+    if multi:
+        rows.append([InlineKeyboardButton(text="Далее", callback_data=f"s2:next:{step}")])
+    if step:
+        rows.append([InlineKeyboardButton(text="← Назад", callback_data=f"s2:back:{step}")])
+    text = question + ("\n\nМожно выбрать несколько вариантов." if multi else "")
+    try:
+        await message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    except TelegramBadRequest as exc:
+        if "message is not modified" not in str(exc).lower():
+            raise
+
+
+@dp.callback_query(F.data.startswith("s2:"))
+async def survey2_callback(call: CallbackQuery):
+    await call.answer()
+    if call.message.chat.type != "private":
+        return
+    try:
+        parts = call.data.split(":")
+        action, step = parts[1], int(parts[2])
+        value = int(parts[3]) if len(parts) == 4 else None
+        state = survey_v2.update(call.from_user.id, step, action, value)
+    except (ValueError, IndexError):
+        return
+    if state is None:
+        state = survey_v2.get(call.from_user.id)
+    if state:
+        await _survey2_show(call.message, call.from_user.id, state)
+
+
+def _is_survey2_reply(msg: Message) -> bool:
+    if msg.chat.type != "private" or not msg.from_user or not msg.reply_to_message:
+        return False
+    state = survey_v2.get(msg.from_user.id)
+    return bool(state and state["waiting"] and state["prompt_id"] == msg.reply_to_message.message_id)
+
+
+@dp.message(F.reply_to_message, F.text, _is_survey2_reply)
+async def survey2_text(msg: Message):
+    if msg.chat.type != "private" or not msg.from_user:
+        return
+    state = survey_v2.get(msg.from_user.id)
+    if not state or not state["waiting"] or state["prompt_id"] != msg.reply_to_message.message_id:
+        return
+    if not msg.text.strip() or len(msg.text) > 500:
+        await msg.answer("Ответ должен содержать от 1 до 500 символов. Ответь на вопрос ещё раз.")
+        return
+    state = survey_v2.update(msg.from_user.id, state["step"], "text", msg.text)
+    if state:
+        placeholder = await msg.answer("Продолжаем опрос…")
+        await _survey2_show(placeholder, msg.from_user.id, state)
+
+
 async def _survey_show(call: CallbackQuery, state: dict, test: bool = False) -> None:
     if state["completed_at"]:
         if test:
@@ -198,7 +290,7 @@ async def survey_start(call: CallbackQuery):
     await call.answer()
     if call.message.chat.type != "private":
         return
-    await _survey_show(call, survey.start(call.from_user.id))
+    await _survey2_show(call.message, call.from_user.id, survey_v2.start(call.from_user.id))
 
 
 @dp.callback_query(F.data == "survey_test_start")
@@ -1686,6 +1778,7 @@ async def handle_unknown(msg: Message):
 async def main():
     db.init_db()
     survey.init()
+    survey_v2.init()
     logger.info("Bot starting...")
     asyncio.create_task(_node_health_loop())
     asyncio.create_task(_expire_reminders_loop())
