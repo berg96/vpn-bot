@@ -128,7 +128,17 @@ dp.callback_query.middleware(ActivityMiddleware())
 async def _survey_show(call: CallbackQuery, state: dict, test: bool = False) -> None:
     if state["completed_at"]:
         if test:
-            await call.message.edit_text("Тестовый опрос завершён. Бонус не начислялся.")
+            await call.message.edit_text(
+                "Тестовый опрос завершён. Бонус не начислялся.\n\n"
+                "Пример сообщения после настоящего опроса:\n\n"
+                "Спасибо за ответы! 🎁 7 дней добавлены к подписке.\n\n"
+                "Пригласи друга, который ещё не пользовался ботом, по своей ссылке. "
+                "После его первой оплаты подписки вам обоим положено ещё по 7 дней.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🎁 Пригласить друга", callback_data="ref_info")],
+                    [InlineKeyboardButton(text="👤 Профиль", callback_data="profile")],
+                ]),
+            )
             return
         status = await survey.grant_reward(call.from_user.id)
         if status == "granted":
