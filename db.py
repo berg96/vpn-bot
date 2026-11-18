@@ -1321,6 +1321,15 @@ def get_reachable_users() -> list[dict]:
     ]
 
 
+def get_survey_recipients() -> list[dict]:
+    with _conn() as c:
+        completed = {r[0] for r in c.execute(
+            "SELECT tg_id FROM survey_responses WHERE completed_at IS NOT NULL "
+            "UNION SELECT tg_id FROM survey_v2 WHERE completed_at IS NOT NULL"
+        )}
+    return [user for user in get_reachable_users() if user["tg_id"] not in completed]
+
+
 def get_paying_user_ids() -> set[int]:
     with _conn() as c:
         rows = c.execute("SELECT DISTINCT tg_id FROM payments").fetchall()

@@ -58,6 +58,18 @@ def test_old_reward_is_never_reopened(tmp_path, monkeypatch):
     assert survey.get(1)["reward_status"] == "granted"
 
 
+def test_campaign_excludes_completed_and_opted_out(tmp_path, monkeypatch):
+    setup(tmp_path, monkeypatch)
+    for tg_id in (1, 2, 3, 4):
+        db.record_user(tg_id, None)
+    survey.start(1)
+    with db._conn() as c:
+        c.execute("UPDATE survey_responses SET completed_at='done' WHERE tg_id=1")
+        c.execute("INSERT INTO survey_v2 (tg_id, completed_at) VALUES (2, 'done')")
+        c.execute("UPDATE users SET notify_opt_out=1 WHERE tg_id=3")
+    assert [u["tg_id"] for u in db.get_survey_recipients()] == [4]
+
+
 def test_back_and_remove_other_deletes_text(tmp_path, monkeypatch):
     setup(tmp_path, monkeypatch)
     s.update(1, 0, "choice", 2)
