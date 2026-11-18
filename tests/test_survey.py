@@ -29,6 +29,17 @@ def test_survey_rejects_out_of_order_or_invalid_answers(tmp_path, monkeypatch):
     assert survey.get(1)["answers"] == []
 
 
+def test_existing_completed_survey_keeps_its_reward_status(tmp_path, monkeypatch):
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "survey.db"))
+    survey.init()
+    with db._conn() as conn:
+        conn.execute("INSERT INTO survey_responses (tg_id, answers, completed_at, reward_status) VALUES (?, ?, ?, ?)",
+                     (1, "[0, 0, 0, 0, 0]", "2026-11-17", "granted"))
+    state = survey.start(1)
+    assert state["completed_at"] and state["reward_status"] == "granted"
+    assert survey.answer(1, 5, 0) is None
+
+
 def test_multiple_choice_back_and_resume(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "survey.db"))
     survey.init()

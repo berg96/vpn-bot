@@ -133,8 +133,11 @@ async def _survey_show(call: CallbackQuery, state: dict, test: bool = False) -> 
         status = await survey.grant_reward(call.from_user.id)
         if status == "granted":
             await call.message.edit_text(
-                "Спасибо за ответы! 🎁 7 дней добавлены к подписке.",
+                "Спасибо за ответы! 🎁 7 дней добавлены к подписке.\n\n"
+                "Пригласи друга, который ещё не пользовался ботом, по своей ссылке. "
+                "После его первой оплаты подписки вам обоим положено ещё по 7 дней.",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🎁 Пригласить друга", callback_data="ref_info")],
                     [InlineKeyboardButton(text="👤 Профиль", callback_data="profile")],
                 ]),
             )
