@@ -801,7 +801,13 @@
 
   function openStream() {
     if (es) { try { es.close(); } catch (_) {} }
-    es = new EventSource(API_BASE + '/stream/' + encodeURIComponent(chatKey));
+    var streamKey = chatKey;
+    var cursorKey = 'rs_support_event_v1:' + streamKey;
+    var cursor = '';
+    try { cursor = localStorage.getItem(cursorKey) || ''; } catch (_) {}
+    var streamUrl = API_BASE + '/stream/' + encodeURIComponent(streamKey);
+    if (cursor) streamUrl += '?after=' + encodeURIComponent(cursor);
+    es = new EventSource(streamUrl);
     var stream = es;
     es.addEventListener('open', function () {
       setStatus(true);
@@ -815,6 +821,7 @@
       }
     });
     es.addEventListener('message', function (ev) {
+      if (es !== stream || chatKey !== streamKey) return;
       try {
         var data = JSON.parse(ev.data);
         if (!data || !data.type) return;
@@ -879,6 +886,7 @@
           threadClosed = false;
           hideCloseCard();
         }
+        if (ev.lastEventId) localStorage.setItem(cursorKey, ev.lastEventId);
       } catch (_) {}
     });
   }
